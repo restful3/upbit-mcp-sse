@@ -9,7 +9,7 @@ async def get_deposits_withdrawals(
     transaction_type: Literal["deposit", "withdraw"] = "deposit",
     page: int = 1,
     limit: int = 100,
-    ctx: Context = None
+    ctx: Optional[Context] = None
 ) -> list[dict]:
     """
     업비트 계정의 입출금 내역을 조회합니다.
@@ -24,6 +24,7 @@ async def get_deposits_withdrawals(
     Returns:
         list[dict]: 입출금 내역
     """
+    print(f"DEBUG: get_deposits_withdrawals called. currency={currency}, txid={txid}, transaction_type={transaction_type}, page={page}, limit={limit}, ctx_type={type(ctx)}", flush=True)
     if not UPBIT_ACCESS_KEY:
         if ctx:
             ctx.error("API 키가 설정되지 않았습니다. .env 파일에 UPBIT_ACCESS_KEY와 UPBIT_SECRET_KEY를 설정해주세요.")
@@ -53,7 +54,7 @@ async def get_deposits_withdrawals(
             if res.status_code != 200:
                 if ctx:
                     ctx.error(f"업비트 API 오류: {res.status_code} - {res.text}")
-                return [{"error": f"업비트 API 오류: {res.status_code}"}]
+                return [{"error": f"업비트 API 오류: {res.status_code} - {res.text}"}]
             return res.json()
         except Exception as e:
             if ctx:

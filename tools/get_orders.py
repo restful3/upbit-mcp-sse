@@ -8,8 +8,9 @@ async def get_orders(
     state: Literal["wait", "done", "cancel"] = "wait",
     page: int = 1,
     limit: int = 100,
-    ctx: Context = None
+    ctx: Optional[Context] = None
 ) -> list[dict]:
+    print(f"DEBUG: get_orders called. market={market}, state={state}, page={page}, limit={limit}, ctx_type={type(ctx)}", flush=True)
     """
     업비트에서 주문 내역을 조회합니다.
     
@@ -49,7 +50,7 @@ async def get_orders(
             if res.status_code != 200:
                 if ctx:
                     ctx.error(f"업비트 API 오류: {res.status_code} - {res.text}")
-                return [{"error": f"업비트 API 오류: {res.status_code}"}]
+                return [{"error": f"업비트 API 오류: {res.status_code} - {res.text}"}]
             return res.json()
         except Exception as e:
             if ctx:

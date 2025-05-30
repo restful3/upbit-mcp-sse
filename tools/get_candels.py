@@ -8,7 +8,7 @@ async def get_candles(
     interval: Literal["minute1", "minute3", "minute5", "minute10", "minute15", "minute30", "minute60", "minute240", "day", "week", "month"],
     count: int = 200,
     to: Optional[str] = None,
-    ctx: Context = None
+    ctx: Optional[Context] = None
 ) -> list[dict]:
     """
     업비트에서 캔들스틱 데이터를 조회합니다.
@@ -22,6 +22,7 @@ async def get_candles(
     Returns:
         list[dict]: 캔들스틱 데이터
     """
+    print(f"DEBUG: get_candles called. market={market}, interval={interval}, count={count}, to={to}, ctx_type={type(ctx)}", flush=True)
     if count > 200:
         count = 200
         if ctx:
@@ -49,7 +50,7 @@ async def get_candles(
             if res.status_code != 200:
                 if ctx:
                     ctx.error(f"업비트 API 오류: {res.status_code} - {res.text}")
-                return [{"error": f"업비트 API 오류: {res.status_code}"}]
+                return [{"error": f"업비트 API 오류: {res.status_code} - {res.text}"}]
             return res.json()
         except Exception as e:
             if ctx:

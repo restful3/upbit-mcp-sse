@@ -1,8 +1,9 @@
 import httpx
+from typing import Optional
 from fastmcp import Context
 from config import generate_upbit_token, UPBIT_ACCESS_KEY, API_BASE
 
-async def get_accounts(ctx: Context) -> list[dict]:
+async def get_accounts(ctx: Optional[Context] = None) -> list[dict]:
     print(f"DEBUG: get_accounts called. ctx type: {type(ctx)}, ctx value: {str(ctx)[:100]}...", flush=True)
     """
     업비트 계정의 잔고 정보를 조회합니다.

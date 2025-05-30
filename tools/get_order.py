@@ -6,8 +6,9 @@ from config import generate_upbit_token, UPBIT_ACCESS_KEY, API_BASE
 async def get_order(
     uuid: Optional[str] = None,
     identifier: Optional[str] = None,
-    ctx: Context = None
+    ctx: Optional[Context] = None
 ) -> dict:
+    print(f"DEBUG: get_order called. uuid={uuid}, identifier={identifier}, ctx_type={type(ctx)}", flush=True)
     """
     업비트에서 특정 주문의 정보를 조회합니다.
     
@@ -49,7 +50,7 @@ async def get_order(
             if res.status_code != 200:
                 if ctx:
                     ctx.error(f"업비트 API 오류: {res.status_code} - {res.text}")
-                return {"error": f"업비트 API 오류: {res.status_code}"}
+                return {"error": f"업비트 API 오류: {res.status_code} - {res.text}"}
             return res.json()
         except Exception as e:
             if ctx:

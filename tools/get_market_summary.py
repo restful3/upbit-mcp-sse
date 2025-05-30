@@ -1,20 +1,22 @@
 from fastmcp import Context
 import httpx
+from typing import Optional
 from config import API_BASE, MAJOR_COINS, create_error_response
 
-async def get_market_summary(ctx: Context = None) -> dict:
+async def get_market_summary(ctx: Optional[Context] = None) -> dict:
     """
     주요 암호화폐 시장의 요약 정보를 제공합니다.
     
     Returns:
         dict: 주요 암호화폐 시장 요약 정보
     """
+    print(f"DEBUG: get_market_summary called. ctx_type={type(ctx)}", flush=True)
     async with httpx.AsyncClient() as client:
         # 마켓 정보 가져오기
         markets_res = await client.get(f"{API_BASE}/market/all")
         if markets_res.status_code != 200:
             if ctx:
-                ctx.error(f"마켓 정보 조회 실패: {markets_res.status_code}")
+                ctx.error(f"마켓 정보 조회 실패: {markets_res.status_code} - {markets_res.text}")
             return create_error_response("마켓 정보 조회에 실패했습니다.", markets_res.status_code)
         
         all_markets = markets_res.json()
@@ -31,7 +33,7 @@ async def get_market_summary(ctx: Context = None) -> dict:
             ticker_res = await client.get(f"{API_BASE}/ticker", params={"markets": markets_param})
             if ticker_res.status_code != 200:
                 if ctx:
-                    ctx.warning(f"일부 티커 정보 조회 실패: {ticker_res.status_code}")
+                    ctx.warning(f"일부 티커 정보 조회 실패: {ticker_res.status_code} - {ticker_res.text}")
                 continue
                 
             all_tickers.extend(ticker_res.json())

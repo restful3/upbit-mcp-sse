@@ -9,8 +9,9 @@ async def create_withdraw(
     address: Optional[str] = None,
     secondary_address: Optional[str] = None,
     transaction_type: Optional[str] = None,
-    ctx: Context = None
+    ctx: Optional[Context] = None
 ) -> dict:
+    print(f"DEBUG: create_withdraw called. currency={currency}, amount={amount}, address={address}, ctx_type={type(ctx)}", flush=True)
     """
     업비트에서 출금을 요청합니다.
     
@@ -64,7 +65,7 @@ async def create_withdraw(
             if res.status_code != 200:
                 if ctx:
                     ctx.error(f"업비트 API 오류: {res.status_code} - {res.text}")
-                return {"error": f"업비트 API 오류: {res.status_code}"}
+                return {"error": f"업비트 API 오류: {res.status_code} - {res.text}"}
             return res.json()
         except Exception as e:
             if ctx:

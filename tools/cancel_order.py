@@ -1,10 +1,11 @@
 import httpx
 from fastmcp import Context
+from typing import Optional
 from config import generate_upbit_token, UPBIT_ACCESS_KEY, API_BASE
 
 async def cancel_order(
     uuid: str,
-    ctx: Context = None
+    ctx: Optional[Context] = None
 ) -> dict:
     """
     업비트에서 주문을 취소합니다.
@@ -15,6 +16,7 @@ async def cancel_order(
     Returns:
         dict: 취소 결과
     """
+    print(f"DEBUG: cancel_order called. uuid={uuid}, ctx_type={type(ctx)}", flush=True)
     if not UPBIT_ACCESS_KEY:
         if ctx:
             ctx.error("API 키가 설정되지 않았습니다. .env 파일에 UPBIT_ACCESS_KEY와 UPBIT_SECRET_KEY를 설정해주세요.")
@@ -34,7 +36,7 @@ async def cancel_order(
             if res.status_code != 200:
                 if ctx:
                     ctx.error(f"업비트 API 오류: {res.status_code} - {res.text}")
-                return {"error": f"업비트 API 오류: {res.status_code}"}
+                return {"error": f"업비트 API 오류: {res.status_code} - {res.text}"}
             return res.json()
         except Exception as e:
             if ctx:

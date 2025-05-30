@@ -20,8 +20,9 @@ from config import API_BASE
 
 def technical_analysis(
     market: str,
-    ctx: Context = None
+    ctx: Optional[Context] = None
 ) -> Dict[str, Any]:
+    print(f"DEBUG: technical_analysis called. market={market}, ctx_type={type(ctx)}", flush=True)
     """
     (단순 테스트용) 특정 마켓에 대한 매우 간단한 기술적 분석을 수행합니다.
     """
