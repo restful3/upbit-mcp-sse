@@ -1,0 +1,10 @@
+fastmcp==1.0.0
+# fastmcp-http
+httpx>=0.27.0
+uvicorn
+numpy
+# 주석 처리된 다른 의존성들
+# python-dotenv
+# PyJWT
+# cryptography
+# websockets # SSE 사용 안 할 예정이므로 주석 처리
