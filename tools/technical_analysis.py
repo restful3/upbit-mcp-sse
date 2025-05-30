@@ -18,45 +18,328 @@ from config import API_BASE
 #     "ma_signal", "rsi_signal", "bb_signal", "macd_signal", "stoch_signal"
 # }
 
-def technical_analysis(
+async def technical_analysis(
     market: str,
+    interval: Literal["minute1", "minute3", "minute5", "minute10", "minute15", "minute30", "minute60", "minute240", "day", "week", "month"] = "day",
+    count: int = 200,
     ctx: Optional[Context] = None
 ) -> Dict[str, Any]:
-    print(f"DEBUG: technical_analysis called. market={market}, ctx_type={type(ctx)}", flush=True)
     """
-    (단순 테스트용) 특정 마켓에 대한 매우 간단한 기술적 분석을 수행합니다.
-    """
-    if ctx:
-        # 이 로그가 찍히는지 확인하는 것이 매우 중요합니다.
-        ctx.info(f"SYNC_DEBUG_SIMPLE_TOOL: technical_analysis_simple called with market: {market}")
+    특정 마켓에 대한 기술적 분석을 수행합니다.
     
-    # 매우 간단한 결과 반환
-    result = {
-        "status": "ok",
-        "tool_name": "technical_analysis_simple_test",
-        "market_received": market,
-        "message": "This is a simple synchronous tool test response."
-    }
-    
-    if ctx:
-        ctx.info(f"SYNC_DEBUG_SIMPLE_TOOL: Returning simple result: {result}")
+    Args:
+        market (str): 마켓 코드 (예: KRW-BTC)
+        interval (str): 시간 간격 (minute1~minute240, day, week, month)
+        count (int): 분석에 사용할 캔들 개수 (최대 200)
+        ctx (Context, optional): 컨텍스트 객체
         
-    return result
+    Returns:
+        dict: 기술적 분석 결과
+    """
+    print(f"DEBUG: technical_analysis called. market={market}, interval={interval}, count={count}, ctx_type={type(ctx)}", flush=True)
+    
+    if ctx:
+        ctx.info(f"기술적 분석 시작: {market} {interval}")
+    
+    # 캔들스틱 데이터 가져오기
+    # interval에 따라 API 엔드포인트 포맷 조정
+    if interval in ["day", "week", "month"]:
+        url_interval = f"{interval}s"
+    elif interval.startswith("minute"):
+        # 분봉의 경우 interval에 unit이 포함되어 있으므로 그대로 사용
+        # 예: minute1, minute3, ... minute240
+        url_interval = interval 
+    else:
+        # 혹시 모를 다른 interval 값에 대한 기본 처리 (현재 정의된 Literal 타입에는 해당되지 않음)
+        print(f"WARNING_TA: Unsupported interval format for URL: {interval}. Using as is.", flush=True)
+        url_interval = interval
 
-# 기존 main_test 함수는 현재 테스트와 직접 관련 없으므로 그대로 두거나 주석 처리
+    url = f"{API_BASE}/candles/{url_interval}"
+    params = {
+        'market': market,
+        'count': str(count)
+    }
+    print(f"DEBUG_TA: Attempting to fetch candles. URL: {url}, Params: {params}", flush=True)
+    
+    try:
+        async with httpx.AsyncClient() as client:
+            res = await client.get(url, params=params)
+            print(f"DEBUG_TA: API response status code: {res.status_code}", flush=True)
+            print(f"DEBUG_TA: API response text: {res.text[:500]}...", flush=True)
+            
+            if res.status_code != 200:
+                error_msg = f"업비트 API 오류: {res.status_code} - {res.text}"
+                print(f"ERROR_TA: {error_msg}", flush=True)
+                if ctx:
+                    ctx.error(error_msg)
+                return {"error": error_msg}
+            
+            candles = res.json()
+            if not candles:
+                error_msg = "데이터를 가져오는데 실패했습니다. API 응답이 비어있습니다."
+                print(f"ERROR_TA: {error_msg}", flush=True)
+                if ctx:
+                    ctx.error(error_msg)
+                return {"error": error_msg}
+            print(f"DEBUG_TA: Candles data successfully fetched. Number of candles: {len(candles)}", flush=True)
+    except httpx.RequestError as e:
+        error_msg = f"API 호출 중 httpx.RequestError 발생: {str(e)}"
+        print(f"ERROR_TA: {error_msg}", flush=True)
+        if ctx:
+            ctx.error(error_msg)
+        return {"error": error_msg}
+    except Exception as e:
+        error_msg = f"API 호출 중 알 수 없는 오류 발생: {str(e)}, Type: {type(e).__name__}"
+        print(f"ERROR_TA: {error_msg}", flush=True)
+        if ctx:
+            ctx.error(error_msg)
+        return {"error": error_msg}
+    
+    # 가격 데이터 추출
+    try:
+        print("DEBUG_TA: Extracting price data from candles...", flush=True)
+        closes = np.array([float(candle["trade_price"]) for candle in candles])
+        highs = np.array([float(candle["high_price"]) for candle in candles])
+        lows = np.array([float(candle["low_price"]) for candle in candles])
+        volumes = np.array([float(candle["candle_acc_trade_volume"]) for candle in candles])
+        print("DEBUG_TA: Price data extracted successfully.", flush=True)
+    except (KeyError, ValueError) as e:
+        error_msg = f"데이터 처리 중 오류 발생 (KeyError or ValueError): {str(e)}"
+        print(f"ERROR_TA: {error_msg}", flush=True)
+        if ctx:
+            ctx.error(error_msg)
+        return {"error": error_msg}
+    except Exception as e:
+        error_msg = f"데이터 처리 중 알 수 없는 오류 발생: {str(e)}, Type: {type(e).__name__}"
+        print(f"ERROR_TA: {error_msg}", flush=True)
+        if ctx:
+            ctx.error(error_msg)
+        return {"error": error_msg}
+
+    # 기술적 지표 계산
+    try:
+        print("DEBUG_TA: Calculating technical indicators...", flush=True)
+        # 1. 이동평균선 (SMA)
+        sma_20 = np.mean(closes[-20:])
+        sma_50 = np.mean(closes[-50:])
+        sma_200 = np.mean(closes[-200:]) if len(closes) >= 200 else None
+        
+        # 2. RSI (14일)
+        def calculate_rsi(prices, period=14):
+            # Ensure prices has enough data
+            if len(prices) < period + 1: # Need at least period + 1 for np.diff and initial mean
+                 print(f"WARNING_TA: Not enough data for RSI calculation. Prices length: {len(prices)}, Period: {period}", flush=True)
+                 return np.nan # Return NaN or some default if not enough data
+
+            deltas = np.diff(prices)
+            gains = np.where(deltas > 0, deltas, 0)
+            losses = np.where(deltas < 0, -deltas, 0)
+            
+            # Ensure there are enough gains/losses for the initial average
+            if len(gains) < period or len(losses) < period:
+                print(f"WARNING_TA: Not enough gain/loss data for RSI. Gains length: {len(gains)}, Losses length: {len(losses)}, Period: {period}", flush=True)
+                return np.nan
+
+            avg_gain = np.mean(gains[:period])
+            avg_loss = np.mean(losses[:period])
+            
+            for i in range(period, len(deltas)):
+                avg_gain = (avg_gain * (period - 1) + gains[i]) / period
+                avg_loss = (avg_loss * (period - 1) + losses[i]) / period
+            
+            if avg_loss == 0:
+                return 100.0
+            rs = avg_gain / avg_loss
+            rsi_val = 100.0 - (100.0 / (1.0 + rs))
+            return rsi_val
+        
+        rsi = calculate_rsi(closes)
+        
+        # 3. 볼린저 밴드 (20일, 2 표준편차)
+        def calculate_bollinger_bands(prices, period=20, num_std=2):
+            if len(prices) < period:
+                print(f"WARNING_TA: Not enough data for Bollinger Bands. Prices length: {len(prices)}, Period: {period}", flush=True)
+                return np.nan, np.nan, np.nan
+            sma = np.mean(prices[-period:])
+            std = np.std(prices[-period:])
+            upper_band = sma + (std * num_std)
+            lower_band = sma - (std * num_std)
+            return upper_band, sma, lower_band
+        
+        bb_upper, bb_middle, bb_lower = calculate_bollinger_bands(closes)
+        
+        # 4. MACD (12, 26, 9)
+        def calculate_macd(prices, fast_period=12, slow_period=26, signal_period=9):
+            if len(prices) < slow_period:
+                print(f"WARNING_TA: Not enough data for MACD. Prices length: {len(prices)}, Slow period: {slow_period}", flush=True)
+                return np.nan, np.nan, np.nan
+
+            # Calculate Fast EMA
+            ema_fast = np.full_like(prices, np.nan)
+            ema_fast[fast_period-1] = np.mean(prices[:fast_period])
+            for i in range(fast_period, len(prices)):
+                ema_fast[i] = prices[i] * (2 / (fast_period + 1)) + ema_fast[i-1] * (1 - (2 / (fast_period + 1)))
+
+            # Calculate Slow EMA
+            ema_slow = np.full_like(prices, np.nan)
+            ema_slow[slow_period-1] = np.mean(prices[:slow_period])
+            for i in range(slow_period, len(prices)):
+                ema_slow[i] = prices[i] * (2 / (slow_period + 1)) + ema_slow[i-1] * (1 - (2 / (slow_period + 1)))
+            
+            macd_line = ema_fast - ema_slow
+
+            # Calculate Signal Line (EMA of MACD line)
+            signal_line_val = np.full_like(macd_line, np.nan)
+            # Ensure there are enough non-NaN MACD values to start signal calculation
+            valid_macd_start_index = -1
+            for i in range(len(macd_line)):
+                if not np.isnan(macd_line[i]):
+                    valid_macd_start_index = i
+                    break
+            
+            if valid_macd_start_index != -1 and len(macd_line) - valid_macd_start_index >= signal_period:
+                signal_line_val[valid_macd_start_index + signal_period - 1] = np.mean(macd_line[valid_macd_start_index : valid_macd_start_index + signal_period])
+                for i in range(valid_macd_start_index + signal_period, len(macd_line)):
+                    signal_line_val[i] = macd_line[i] * (2 / (signal_period + 1)) + signal_line_val[i-1] * (1 - (2 / (signal_period + 1)))
+            
+            histogram_val = macd_line - signal_line_val
+            
+            # Return the last values
+            return (macd_line[-1] if len(macd_line) > 0 and not np.isnan(macd_line[-1]) else np.nan,
+                    signal_line_val[-1] if len(signal_line_val) > 0 and not np.isnan(signal_line_val[-1]) else np.nan,
+                    histogram_val[-1] if len(histogram_val) > 0 and not np.isnan(histogram_val[-1]) else np.nan)
+
+        macd, signal_line, histogram = calculate_macd(closes)
+        
+        # 5. 거래량 분석
+        current_volume = volumes[-1] if len(volumes) > 0 else np.nan
+        if len(volumes) >= 20:
+            volume_sma = np.mean(volumes[-20:])
+            volume_ratio = current_volume / volume_sma if volume_sma > 0 and not np.isnan(current_volume) else np.nan
+        else:
+            print(f"WARNING_TA: Not enough data for Volume SMA. Volumes length: {len(volumes)}", flush=True)
+            volume_sma = np.nan
+            volume_ratio = np.nan
+        
+        print("DEBUG_TA: Technical indicators calculated.", flush=True)
+        # 신호 생성
+        current_price = closes[-1] if len(closes) > 0 else np.nan
+        
+        # 이동평균선 신호
+        ma_signal = "neutral"
+        if not np.isnan(current_price) and not np.isnan(sma_20) and not np.isnan(sma_50) and sma_200 is not None and not np.isnan(sma_200):
+            if current_price > sma_20 and sma_20 > sma_50:
+                ma_signal = "bullish"
+            elif current_price < sma_20 and sma_20 < sma_50:
+                ma_signal = "bearish"
+        
+        # RSI 신호
+        rsi_signal = "neutral"
+        if not np.isnan(rsi):
+            if rsi > 70:
+                rsi_signal = "overbought"
+            elif rsi < 30:
+                rsi_signal = "oversold"
+        
+        # 볼린저 밴드 신호
+        bb_signal = "neutral"
+        if not np.isnan(current_price) and not np.isnan(bb_upper) and not np.isnan(bb_lower):
+            if current_price > bb_upper:
+                bb_signal = "overbought"
+            elif current_price < bb_lower:
+                bb_signal = "oversold"
+        
+        # MACD 신호
+        macd_signal = "neutral"
+        if not np.isnan(macd) and not np.isnan(signal_line) and not np.isnan(histogram):
+            if macd > signal_line and histogram > 0:
+                macd_signal = "bullish"
+            elif macd < signal_line and histogram < 0:
+                macd_signal = "bearish"
+        
+        # 거래량 신호
+        volume_signal = "neutral"
+        if not np.isnan(volume_ratio):
+            if volume_ratio > 1.5:
+                volume_signal = "high"
+            elif volume_ratio < 0.5:
+                volume_signal = "low"
+        
+        # 종합 신호
+        defined_signals = [sig for sig in [ma_signal, rsi_signal, bb_signal, macd_signal] if sig != "neutral"]
+        bullish_signals = sum(1 for signal_val in defined_signals if signal_val in ["bullish", "oversold"])
+        bearish_signals = sum(1 for signal_val in defined_signals if signal_val in ["bearish", "overbought"])
+        
+        overall_signal = "neutral"
+        if len(defined_signals) > 0:
+            if bullish_signals >= max(1, len(defined_signals) * 0.6):
+                overall_signal = "strong_buy"
+            elif bullish_signals > bearish_signals and bullish_signals >= max(1, len(defined_signals) * 0.4):
+                overall_signal = "buy"
+            elif bearish_signals >= max(1, len(defined_signals) * 0.6):
+                overall_signal = "strong_sell"
+            elif bearish_signals > bullish_signals and bearish_signals >= max(1, len(defined_signals) * 0.4):
+                overall_signal = "sell"
+
+        print("DEBUG_TA: Signals generated.", flush=True)
+        result = {
+            "status": "ok",
+            "market": market,
+            "interval": interval,
+            "current_price": current_price if not np.isnan(current_price) else "N/A",
+            "indicators": {
+                "sma": {
+                    "sma_20": sma_20 if not np.isnan(sma_20) else "N/A",
+                    "sma_50": sma_50 if not np.isnan(sma_50) else "N/A",
+                    "sma_200": sma_200 if sma_200 is not None and not np.isnan(sma_200) else "N/A"
+                },
+                "rsi": rsi if not np.isnan(rsi) else "N/A",
+                "bollinger_bands": {
+                    "upper": bb_upper if not np.isnan(bb_upper) else "N/A",
+                    "middle": bb_middle if not np.isnan(bb_middle) else "N/A",
+                    "lower": bb_lower if not np.isnan(bb_lower) else "N/A"
+                },
+                "macd": {
+                    "macd": macd if not np.isnan(macd) else "N/A",
+                    "signal": signal_line if not np.isnan(signal_line) else "N/A",
+                    "histogram": histogram if not np.isnan(histogram) else "N/A"
+                },
+                "volume": {
+                    "current": current_volume if not np.isnan(current_volume) else "N/A",
+                    "sma": volume_sma if not np.isnan(volume_sma) else "N/A",
+                    "ratio": volume_ratio if not np.isnan(volume_ratio) else "N/A"
+                }
+            },
+            "signals": {
+                "ma_signal": ma_signal,
+                "rsi_signal": rsi_signal,
+                "bb_signal": bb_signal,
+                "macd_signal": macd_signal,
+                "volume_signal": volume_signal,
+                "overall_signal": overall_signal
+            }
+        }
+        
+        if ctx:
+            ctx.info(f"기술적 분석 완료: {market} {interval}")
+        print(f"DEBUG_TA: Technical analysis result: {result}", flush=True)
+        return result
+        
+    except Exception as e:
+        error_msg = f"기술적 지표 계산 또는 신호 생성 중 알 수 없는 오류 발생: {str(e)}, Type: {type(e).__name__}"
+        print(f"ERROR_TA: {error_msg}", flush=True)
+        if ctx:
+            ctx.error(error_msg)
+        return {"error": error_msg}
+
 def main_test():
     class MockContext:
         def info(self, msg): print(f"INFO: {msg}")
         def error(self, msg): print(f"ERROR: {msg}")
+        def warning(self, msg): print(f"WARNING: {msg}")
 
     ctx = MockContext()
-    # print("SYNC_DEBUG: main_test (동기)는 서버를 통해 테스트해야 합니다.")
-    # 직접 호출 테스트 (단순화된 함수)
-    # test_result = technical_analysis(market="KRW-BTC", ctx=ctx)
-    # import json
-    # print(json.dumps(test_result, indent=2, ensure_ascii=False))
-    print("SYNC_DEBUG_SIMPLE_TOOL: main_test is for direct script execution, not server testing.")
-
+    print("SYNC_DEBUG: main_test는 서버를 통해 테스트해야 합니다.")
 
 if __name__ == '__main__':
     main_test()
