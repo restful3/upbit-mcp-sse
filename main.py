@@ -23,12 +23,12 @@ from tools.get_deposits_withdrawals import get_deposits_withdrawals
 
 print("DEBUG: Tool imports in main.py finished", flush=True) # 로그 추가
 
-# from prompts.explain_ticker import explain_ticker
-# from prompts.analyze_portfolio import analyze_portfolio
-# from prompts.order_help import order_help
-# from prompts.trading_strategy import trading_strategy
+from prompts.explain_ticker import explain_ticker
+from prompts.analyze_portfolio import analyze_portfolio
+from prompts.order_help import order_help
+from prompts.trading_strategy import trading_strategy
 
-# from resources.get_market_list import get_market_list
+from resources.get_market_list import get_market_list
 
 print("✅ API 키 관련 로직은 일단 생략합니다.", flush=True)
 
@@ -97,12 +97,12 @@ print(f"--- Additional tools registered ---", flush=True)
 
 # --- 다른 모든 mcp.resource, mcp.prompt 등록 제거 ---
 
-# mcp.resource("market://list")(get_market_list)
+mcp.resource("market://list")(get_market_list)
 
-# mcp.prompt()(explain_ticker)
-# mcp.prompt()(analyze_portfolio)
-# mcp.prompt()(order_help)
-# mcp.prompt()(trading_strategy)
+mcp.prompt()(explain_ticker)
+mcp.prompt()(analyze_portfolio)
+mcp.prompt()(order_help)
+mcp.prompt()(trading_strategy)
 
 if __name__ == "__main__":
     print("DEBUG: Entering __main__ block", flush=True)
