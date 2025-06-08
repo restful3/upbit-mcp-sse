@@ -139,15 +139,4 @@ def create_error_response(message, status_code=400):
         }
     }
 
-# 주요 암호화폐 목록 (기술적 분석 등에 사용)
-MAJOR_COINS = [
-    "KRW-BTC",  # 비트코인
-    "KRW-ETH",  # 이더리움
-    "KRW-XRP",  # 리플
-    "KRW-SOL",  # 솔라나
-    "KRW-ADA",  # 에이다
-    "KRW-DOGE", # 도지코인
-    "KRW-AVAX", # 아발란체
-    "KRW-DOT",  # 폴카닷
-    "KRW-MATIC" # 폴리곤
-]
+# 주요 암호화폐 목록 (기술적 분석 등에 사용) - 더 이상 사용되지 않음 (get_market_summary에서 동적으로 처리)

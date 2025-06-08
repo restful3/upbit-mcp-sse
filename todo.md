@@ -9,7 +9,7 @@
     - 반환 값: `dict` (예: `{"image_url": "생성된_URL", "file_path": "저장된_파일_경로", "message": "차트 생성 완료"}`)
 - **핵심 로직**:
     - Upbit API를 통해 캔들 데이터 조회 (100~200개 캔들)
-        - `tools/get_candels.py` 또는 `technical_analysis.py`의 캔들 조회 로직 활용 고려
+        - `tools/get_candles.py` 또는 `technical_analysis.py`의 캔들 조회 로직 활용 고려
     - 차트 생성 라이브러리 선택 및 설치:
         - `Matplotlib`을 기본으로 사용 (의존성에 추가 필요 - `pyproject.toml` 또는 `requirements.txt`)
     - 차트 이미지 생성:

@@ -1,40 +1,44 @@
 from fastmcp import Context
 import httpx
 from typing import Optional
-from config import API_BASE, MAJOR_COINS, create_error_response
+from config import API_BASE, create_error_response
 
-async def get_market_summary(ctx: Optional[Context] = None) -> dict:
+async def get_market_summary(ctx: Optional[Context] = None, major_n: int = 5, top_n: int = 5, sort_by: str = "trade_price") -> dict:
     """
-    Upbit KRW 전체 마켓의 현재 상황을 요약하여 제공합니다.
+    Upbit KRW 전체 마켓의 현재 상황을 동적으로 요약하여 제공합니다.
 
-    Upbit API를 통해 모든 KRW 마켓의 시세(Ticker) 정보를 조회한 후, 이를 바탕으로 
-    시장 상황을 한눈에 파악할 수 있는 요약 정보를 생성합니다. 이 함수는 여러 API 호출을 포함할 수 있습니다.
-
-    반환되는 정보에는 사전에 정의된 주요 코인들의 시세, 24시간 거래대금 상위 5개 코인, 
-    상승률 상위 5개 코인, 하락률 상위 5개 코인이 포함됩니다.
+    Upbit API를 통해 모든 KRW 마켓의 시세(Ticker) 정보를 조회한 후,
+    `sort_by` 파라미터에 따라 '거래대금' 또는 '거래량'을 기준으로 코인을 정렬하고 요약합니다.
+    상승률 및 하락률 상위 코인 정보도 함께 제공하여 시장 상황을 한눈에 파악할 수 있도록 합니다.
 
     Args:
         ctx (Context, optional): FastMCP 컨텍스트 객체. 함수 실행 중 정보나 오류를 로깅하는 데 사용됩니다.
+        major_n (int, optional): `sort_by` 기준으로 '주요 코인'으로 선정할 개수입니다. 기본값은 5입니다.
+        top_n (int, optional): '주요 코인' 외에 추가로 보여줄 순위 개수입니다. 기본값은 5입니다.
+        sort_by (str, optional): 정렬 기준입니다. 'trade_price'(거래대금, 기본값) 또는 'trade_volume'(거래량)을 선택할 수 있습니다.
 
     Returns:
         dict:
             - 성공 시: 시장 요약 정보를 담은 딕셔너리. 주요 키는 다음과 같습니다:
                 - `timestamp` (int): 데이터 조회 시점의 타임스탬프
-                - `major_coins` (list[dict]): `config.py`에 정의된 주요 코인들의 시세 정보 리스트
-                - `top_volume` (list[dict]): 24시간 거래대금 상위 5개 코인의 시세 정보 리스트
-                - `top_gainers` (list[dict]): 24시간 등락률 상위 5개 코인의 시세 정보 리스트
-                - `top_losers` (list[dict]): 24시간 등락률 하위 5개 코인의 시세 정보 리스트
+                - `major_coins` (list[dict]): `sort_by` 기준 상위 `major_n`개 코인의 시세 정보 리스트
+                - `next_top_coins` (list[dict]): '주요 코인'을 제외한 `sort_by` 기준 상위 `top_n`개 코인의 시세 정보 리스트
+                - `top_gainers` (list[dict]): 24시간 등락률 상위 `top_n`개 코인의 시세 정보 리스트
+                - `top_losers` (list[dict]): 24시간 등락률 하위 `top_n`개 코인의 시세 정보 리스트
                 - `krw_market_count` (int): 전체 KRW 마켓의 개수
             - 실패 시: `{"error": "오류 메시지"}` 형식의 딕셔너리.
 
     Example:
-        >>> summary = await get_market_summary()
+        >>> # 거래량 상위 10개 코인만 조회하고 싶을 때
+        >>> summary = await get_market_summary(major_n=10, top_n=0, sort_by="trade_volume")
         >>> if "error" not in summary:
-        ...     print(f"총 {summary['krw_market_count']}개의 KRW 마켓이 운영 중입니다.")
-        ...     print(f"거래대금 1위: {summary['top_volume'][0]['market']}")
+        ...     print(f"거래량 1~10위: {[c['market'] for c in summary['major_coins']]}")
         ... else:
         ...     print(f"오류: {summary['error']}")
     """
+    if sort_by not in ["trade_price", "trade_volume"]:
+        return create_error_response("Invalid sort_by parameter. Must be 'trade_price' or 'trade_volume'.", 400)
+        
     async with httpx.AsyncClient() as client:
         # 마켓 정보 가져오기
         try:
@@ -47,9 +51,9 @@ async def get_market_summary(ctx: Optional[Context] = None) -> dict:
             all_markets = markets_res.json()
             krw_markets = [market for market in all_markets if market["market"].startswith("KRW-")]
             
-            # 티커 정보 가져오기 (50개씩 나누어 요청)
+            # 티커 정보 가져오기 (100개씩 나누어 요청)
             all_tickers = []
-            chunk_size = 50
+            chunk_size = 100 # 청크 사이즈 상향 조정
             
             for i in range(0, len(krw_markets), chunk_size):
                 chunk = krw_markets[i:i+chunk_size]
@@ -66,26 +70,27 @@ async def get_market_summary(ctx: Optional[Context] = None) -> dict:
             if not all_tickers:
                 return create_error_response("티커 정보를 조회하는데 실패했습니다.", 500)
             
-            # 주요 코인 정보
-            major_coin_info = [ticker for ticker in all_tickers if ticker["market"] in MAJOR_COINS]
+            # 정렬 기준 설정
+            sort_key = "acc_trade_price_24h" if sort_by == "trade_price" else "acc_trade_volume_24h"
+
+            # 선택된 기준으로 모든 티커 정렬
+            sorted_tickers = sorted(all_tickers, key=lambda x: x.get(sort_key, 0), reverse=True)
             
-            # 상위 거래량 코인 (주요 코인 제외)
-            volume_sorted = sorted([t for t in all_tickers if t["market"] not in MAJOR_COINS], 
-                                  key=lambda x: x["acc_trade_price_24h"], 
-                                  reverse=True)
-            top_volume_coins = volume_sorted[:5]
+            # 주요 코인 및 다음 순위 코인 동적 선정
+            major_coin_info = sorted_tickers[:major_n]
+            next_top_coins = sorted_tickers[major_n:major_n + top_n]
             
             # 상위 상승률 코인
-            price_change_sorted = sorted(all_tickers, key=lambda x: x["signed_change_rate"], reverse=True)
-            top_gainers = price_change_sorted[:5]
+            price_change_sorted = sorted(all_tickers, key=lambda x: x.get("signed_change_rate", 0), reverse=True)
+            top_gainers = price_change_sorted[:top_n]
             
             # 상위 하락률 코인
-            top_losers = price_change_sorted[-5:]
+            top_losers = price_change_sorted[-top_n:]
             
             return {
-                "timestamp": all_tickers[0]["timestamp"] if all_tickers else None,
+                "timestamp": all_tickers[0].get("timestamp"),
                 "major_coins": major_coin_info,
-                "top_volume": top_volume_coins,
+                "next_top_coins": next_top_coins,
                 "top_gainers": top_gainers,
                 "top_losers": list(reversed(top_losers)),
                 "krw_market_count": len(krw_markets)

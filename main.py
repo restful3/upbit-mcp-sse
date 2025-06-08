@@ -20,6 +20,9 @@ from tools.get_order import get_order
 from tools.cancel_order import cancel_order
 from tools.get_market_summary import get_market_summary
 from tools.get_deposits_withdrawals import get_deposits_withdrawals
+from tools.get_markets import get_markets
+from tools.get_candles import get_candles
+from tools.create_withdraw import create_withdraw
 
 print("DEBUG: Tool imports in main.py finished", flush=True) # 로그 추가
 
@@ -59,6 +62,9 @@ mcp.tool()(get_order)
 mcp.tool()(cancel_order)
 mcp.tool()(get_market_summary)
 mcp.tool()(get_deposits_withdrawals)
+mcp.tool()(get_markets)
+mcp.tool()(get_candles)
+mcp.tool()(create_withdraw)
 print(f"--- Additional tools registered ---", flush=True)
 
 # --- 다른 모든 mcp.resource, mcp.prompt 등록 제거 ---
