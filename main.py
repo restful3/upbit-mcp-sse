@@ -41,7 +41,7 @@ print("DEBUG: dummy_tool defined", flush=True) # 로그 추가
 
 mcp = FastMCP(
     "Upbit MCP Server with Technical Analysis", 
-    description="FastMCP 1.0.0 with SSE, dummy tool, and technical analysis.",
+    description="FastMCP 1.0.0 with SSE, upbit tool, and technical analysis.",
     port=8001  # 생성자에 포트 추가
 )
 
