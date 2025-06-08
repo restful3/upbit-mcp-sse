@@ -32,12 +32,6 @@ from resources.get_market_list import get_market_list
 
 print("✅ API 키 관련 로직은 일단 생략합니다.", flush=True)
 
-# --- 아주 간단한 더미 툴 정의 ---
-def dummy_tool(ctx: Context, message: str) -> dict:
-    print(f"SYNC_DEBUG_DUMMY_TOOL: dummy_tool called with message: {message}", flush=True)
-    return {"status": "success", "tool_message": f"Dummy tool received: {message}"}
-
-print("DEBUG: dummy_tool defined", flush=True) # 로그 추가
 
 mcp = FastMCP(
     "Upbit MCP Server with Technical Analysis", 
@@ -45,12 +39,6 @@ mcp = FastMCP(
     port=8001  # 생성자에 포트 추가
 )
 
-print(f"DEBUG: FastMCP object created: {mcp}", flush=True) # 로그 추가
-
-print(f"--- Before tool registration (dummy_tool) ---", flush=True)
-print(f"dummy_tool function: {dummy_tool}", flush=True)
-print(f"dummy_tool type: {type(dummy_tool)}", flush=True)
-print(f"MCP object: {mcp}", flush=True)
 try:
     # FastMCP 1.0.0의 내부 툴 저장 방식은 다를 수 있음
     print(f"MCP tools (before): {getattr(mcp, 'tools', 'not found or different structure')}", flush=True) 
@@ -59,30 +47,8 @@ except AttributeError:
     pass
 
 tool_decorator_instance = mcp.tool()
-print(f"mcp.tool() instance: {tool_decorator_instance}", flush=True)
 
-registered_dummy_tool = tool_decorator_instance(dummy_tool)
-print(f"Function decorated by mcp.tool()(dummy_tool): {registered_dummy_tool}", flush=True)
-
-if registered_dummy_tool is None:
-    raise ValueError("mcp.tool()(dummy_tool) returned None, which is not allowed!")
-
-print(f"Is registered_dummy_tool the same as dummy_tool? {registered_dummy_tool is dummy_tool}", flush=True)
-
-print(f"--- After tool registration (dummy_tool) ---", flush=True)
-print(f"MCP object: {mcp}", flush=True)
-try:
-    print(f"MCP tools (after): {getattr(mcp, 'tools', 'not found or different structure')}", flush=True)
-    print(f"MCP _tools (after): {getattr(mcp, '_tools', 'not found or different structure')}", flush=True)
-    # mcp.tools 접근 방식이 다를 수 있으므로, 상세 검사는 일단 보류
-except AttributeError:
-    pass
-
-print(f"--- Registering technical_analysis tool ---", flush=True)
 mcp.tool()(technical_analysis) # technical_analysis 툴 등록 주석 해제
-print(f"--- technical_analysis tool registered ---", flush=True)
-
-print(f"--- Registering additional tools ---", flush=True)
 mcp.tool()(get_ticker)
 mcp.tool()(get_orderbook)
 mcp.tool()(get_trades)
