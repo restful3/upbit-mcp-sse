@@ -10,18 +10,39 @@ async def get_orders(
     limit: int = 100,
     ctx: Optional[Context] = None
 ) -> list[dict]:
-    print(f"DEBUG: get_orders called. market={market}, state={state}, page={page}, limit={limit}, ctx_type={type(ctx)}", flush=True)
     """
-    업비트에서 주문 내역을 조회합니다.
-    
+    주문 목록을 필터링하여 조회합니다. (인증 필요)
+
+    Upbit의 주문 목록 조회 API 엔드포인트(/v1/orders)에 GET 요청을 보내, 
+    특정 마켓 또는 특정 상태의 주문 목록을 가져옵니다. API 키 설정이 필수적입니다.
+
     Args:
-        market (str, optional): 마켓 코드 (예: KRW-BTC)
-        state (str): 주문 상태 - wait(대기), done(완료), cancel(취소)
-        page (int): 페이지 번호
-        limit (int): 페이지당 주문 개수 (최대 100)
-        
+        market (Optional[str]): 조회할 마켓의 코드 (예: "KRW-BTC"). 지정하지 않으면 모든 마켓의 주문을 조회합니다.
+        state (Literal["wait", "done", "cancel"]): 조회할 주문의 상태.
+            - "wait": 미체결 주문 (기본값)
+            - "done": 완료된 주문 (체결 완료)
+            - "cancel": 취소된 주문
+        page (int): 결과의 페이지 번호. 기본값은 1입니다.
+        limit (int): 한 페이지에 표시할 주문의 수. 기본값은 100입니다.
+        ctx (Context, optional): FastMCP 컨텍스트 객체. 함수 실행 중 정보나 오류를 로깅하는 데 사용됩니다.
+
     Returns:
-        list[dict]: 주문 내역
+        list[dict]:
+            - 성공 시: 조회된 주문의 정보를 담은 딕셔너리의 리스트.
+                      리스트의 각 항목은 `get_order`가 반환하는 주문 상세 정보와 유사한 구조를 가집니다.
+            - 실패 시: 오류 정보를 담은 딕셔너리를 포함한 리스트.
+                - `[{"error": "오류 메시지"}]` 형식입니다.
+
+    Example:
+        >>> # 현재 모든 마켓의 미체결 주문 조회
+        >>> pending_orders = await get_orders(state="wait")
+        >>> if pending_orders and "error" not in pending_orders[0]:
+        ...     print(f"총 {len(pending_orders)}개의 미체결 주문이 있습니다.")
+        ... else:
+        ...     print(f"오류 또는 미체결 주문 없음: {pending_orders}")
+        >>>
+        >>> # KRW-BTC 마켓의 체결 완료된 주문 조회
+        >>> btc_done_orders = await get_orders(market="KRW-BTC", state="done")
     """
     if not UPBIT_ACCESS_KEY:
         if ctx:

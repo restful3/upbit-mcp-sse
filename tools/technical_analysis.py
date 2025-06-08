@@ -25,19 +25,47 @@ async def technical_analysis(
     ctx: Optional[Context] = None
 ) -> Dict[str, Any]:
     """
-    특정 마켓에 대한 기술적 분석을 수행합니다.
-    
+    지정된 마켓의 캔들 데이터를 기반으로 다양한 기술적 지표와 매매 신호를 계산합니다.
+
+    Upbit API를 통해 캔들 데이터를 조회한 후, `numpy`를 사용하여 이동평균(SMA), 상대강도지수(RSI), 
+    볼린저 밴드, MACD, 거래량 등 주요 기술적 지표를 계산합니다. 
+    이러한 지표들을 종합하여 간단한 매매 신호("strong_buy", "buy", "sell", "strong_sell", "neutral")를 제공합니다.
+
     Args:
-        market (str): 마켓 코드 (예: KRW-BTC)
-        interval (str): 시간 간격 (minute1~minute240, day, week, month)
-        count (int): 분석에 사용할 캔들 개수 (최대 200)
-        ctx (Context, optional): 컨텍스트 객체
-        
+        market (str): 분석할 마켓 코드 (예: "KRW-BTC").
+        interval (Literal[...]): 캔들의 시간 간격. 
+            "minute1"~"minute240", "day", "week", "month" 중 선택. 기본값은 "day"입니다.
+        count (int): 분석에 사용할 최신 캔들의 개수. 기본값 및 최대값은 200입니다.
+        ctx (Context, optional): FastMCP 컨텍스트 객체. 함수 실행 중 정보나 오류를 로깅하는 데 사용됩니다.
+
     Returns:
-        dict: 기술적 분석 결과
+        Dict[str, Any]:
+            - 성공 시: 기술적 분석 결과를 담은 딕셔너리. 주요 키는 다음과 같습니다:
+                - `market` (str): 분석한 마켓 코드
+                - `interval` (str): 사용된 캔들 인터벌
+                - `indicators` (Dict): 계산된 기술적 지표 값
+                    - `current_price` (float): 현재가
+                    - `sma` (Dict): 단순 이동 평균 (e.g., `sma_20`, `sma_50`)
+                    - `rsi` (float): 상대강도지수
+                    - `bollinger_bands` (Dict): 볼린저 밴드 (`upper`, `middle`, `lower`)
+                    - `macd` (Dict): MACD (`line`, `signal`, `histogram`)
+                    - `volume_analysis` (Dict): 거래량 분석 (`current`, `sma_20`, `ratio`)
+                - `signals` (Dict): 각 지표에 대한 신호
+                    - `ma_signal` ('bullish'|'bearish'|'neutral')
+                    - `rsi_signal` ('overbought'|'oversold'|'neutral')
+                    - `bb_signal` ('overbought'|'oversold'|'neutral')
+                    - `macd_signal` ('bullish'|'bearish'|'neutral')
+                - `overall_signal` (str): 모든 신호를 종합한 최종 매매 신호.
+            - 실패 시: `{"error": "오류 메시지"}` 형식의 딕셔너리.
+
+    Example:
+        >>> btc_analysis = await technical_analysis(market="KRW-BTC", interval="day")
+        >>> if "error" not in btc_analysis:
+        ...     print(f"BTC 일봉 분석 종합 신호: {btc_analysis['overall_signal']}")
+        ...     print(f"현재 RSI: {btc_analysis['indicators']['rsi']:.2f}")
+        ... else:
+        ...     print(f"오류: {btc_analysis['error']}")
     """
-    print(f"DEBUG: technical_analysis called. market={market}, interval={interval}, count={count}, ctx_type={type(ctx)}", flush=True)
-    
     if ctx:
         ctx.info(f"기술적 분석 시작: {market} {interval}")
     
@@ -51,7 +79,6 @@ async def technical_analysis(
         url_interval = interval 
     else:
         # 혹시 모를 다른 interval 값에 대한 기본 처리 (현재 정의된 Literal 타입에는 해당되지 않음)
-        print(f"WARNING_TA: Unsupported interval format for URL: {interval}. Using as is.", flush=True)
         url_interval = interval
 
     url = f"{API_BASE}/candles/{url_interval}"
@@ -59,17 +86,13 @@ async def technical_analysis(
         'market': market,
         'count': str(count)
     }
-    print(f"DEBUG_TA: Attempting to fetch candles. URL: {url}, Params: {params}", flush=True)
     
     try:
         async with httpx.AsyncClient() as client:
             res = await client.get(url, params=params)
-            print(f"DEBUG_TA: API response status code: {res.status_code}", flush=True)
-            print(f"DEBUG_TA: API response text: {res.text[:500]}...", flush=True)
             
             if res.status_code != 200:
                 error_msg = f"업비트 API 오류: {res.status_code} - {res.text}"
-                print(f"ERROR_TA: {error_msg}", flush=True)
                 if ctx:
                     ctx.error(error_msg)
                 return {"error": error_msg}
@@ -77,48 +100,39 @@ async def technical_analysis(
             candles = res.json()
             if not candles:
                 error_msg = "데이터를 가져오는데 실패했습니다. API 응답이 비어있습니다."
-                print(f"ERROR_TA: {error_msg}", flush=True)
                 if ctx:
                     ctx.error(error_msg)
                 return {"error": error_msg}
-            print(f"DEBUG_TA: Candles data successfully fetched. Number of candles: {len(candles)}", flush=True)
     except httpx.RequestError as e:
         error_msg = f"API 호출 중 httpx.RequestError 발생: {str(e)}"
-        print(f"ERROR_TA: {error_msg}", flush=True)
         if ctx:
             ctx.error(error_msg)
         return {"error": error_msg}
     except Exception as e:
         error_msg = f"API 호출 중 알 수 없는 오류 발생: {str(e)}, Type: {type(e).__name__}"
-        print(f"ERROR_TA: {error_msg}", flush=True)
         if ctx:
             ctx.error(error_msg)
         return {"error": error_msg}
     
     # 가격 데이터 추출
     try:
-        print("DEBUG_TA: Extracting price data from candles...", flush=True)
         closes = np.array([float(candle["trade_price"]) for candle in candles])
         highs = np.array([float(candle["high_price"]) for candle in candles])
         lows = np.array([float(candle["low_price"]) for candle in candles])
         volumes = np.array([float(candle["candle_acc_trade_volume"]) for candle in candles])
-        print("DEBUG_TA: Price data extracted successfully.", flush=True)
     except (KeyError, ValueError) as e:
         error_msg = f"데이터 처리 중 오류 발생 (KeyError or ValueError): {str(e)}"
-        print(f"ERROR_TA: {error_msg}", flush=True)
         if ctx:
             ctx.error(error_msg)
         return {"error": error_msg}
     except Exception as e:
         error_msg = f"데이터 처리 중 알 수 없는 오류 발생: {str(e)}, Type: {type(e).__name__}"
-        print(f"ERROR_TA: {error_msg}", flush=True)
         if ctx:
             ctx.error(error_msg)
         return {"error": error_msg}
 
     # 기술적 지표 계산
     try:
-        print("DEBUG_TA: Calculating technical indicators...", flush=True)
         # 1. 이동평균선 (SMA)
         sma_20 = np.mean(closes[-20:])
         sma_50 = np.mean(closes[-50:])
@@ -128,7 +142,6 @@ async def technical_analysis(
         def calculate_rsi(prices, period=14):
             # Ensure prices has enough data
             if len(prices) < period + 1: # Need at least period + 1 for np.diff and initial mean
-                 print(f"WARNING_TA: Not enough data for RSI calculation. Prices length: {len(prices)}, Period: {period}", flush=True)
                  return np.nan # Return NaN or some default if not enough data
 
             deltas = np.diff(prices)
@@ -137,7 +150,6 @@ async def technical_analysis(
             
             # Ensure there are enough gains/losses for the initial average
             if len(gains) < period or len(losses) < period:
-                print(f"WARNING_TA: Not enough gain/loss data for RSI. Gains length: {len(gains)}, Losses length: {len(losses)}, Period: {period}", flush=True)
                 return np.nan
 
             avg_gain = np.mean(gains[:period])
@@ -158,7 +170,6 @@ async def technical_analysis(
         # 3. 볼린저 밴드 (20일, 2 표준편차)
         def calculate_bollinger_bands(prices, period=20, num_std=2):
             if len(prices) < period:
-                print(f"WARNING_TA: Not enough data for Bollinger Bands. Prices length: {len(prices)}, Period: {period}", flush=True)
                 return np.nan, np.nan, np.nan
             sma = np.mean(prices[-period:])
             std = np.std(prices[-period:])
@@ -171,7 +182,6 @@ async def technical_analysis(
         # 4. MACD (12, 26, 9)
         def calculate_macd(prices, fast_period=12, slow_period=26, signal_period=9):
             if len(prices) < slow_period:
-                print(f"WARNING_TA: Not enough data for MACD. Prices length: {len(prices)}, Slow period: {slow_period}", flush=True)
                 return np.nan, np.nan, np.nan
 
             # Calculate Fast EMA
@@ -217,11 +227,9 @@ async def technical_analysis(
             volume_sma = np.mean(volumes[-20:])
             volume_ratio = current_volume / volume_sma if volume_sma > 0 and not np.isnan(current_volume) else np.nan
         else:
-            print(f"WARNING_TA: Not enough data for Volume SMA. Volumes length: {len(volumes)}", flush=True)
             volume_sma = np.nan
             volume_ratio = np.nan
         
-        print("DEBUG_TA: Technical indicators calculated.", flush=True)
         # 신호 생성
         current_price = closes[-1] if len(closes) > 0 else np.nan
         
@@ -281,7 +289,6 @@ async def technical_analysis(
             elif bearish_signals > bullish_signals and bearish_signals >= max(1, len(defined_signals) * 0.4):
                 overall_signal = "sell"
 
-        print("DEBUG_TA: Signals generated.", flush=True)
         result = {
             "status": "ok",
             "market": market,
@@ -322,12 +329,10 @@ async def technical_analysis(
         
         if ctx:
             ctx.info(f"기술적 분석 완료: {market} {interval}")
-        print(f"DEBUG_TA: Technical analysis result: {result}", flush=True)
         return result
         
     except Exception as e:
         error_msg = f"기술적 지표 계산 또는 신호 생성 중 알 수 없는 오류 발생: {str(e)}, Type: {type(e).__name__}"
-        print(f"ERROR_TA: {error_msg}", flush=True)
         if ctx:
             ctx.error(error_msg)
         return {"error": error_msg}

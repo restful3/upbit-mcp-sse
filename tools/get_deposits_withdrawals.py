@@ -12,19 +12,41 @@ async def get_deposits_withdrawals(
     ctx: Optional[Context] = None
 ) -> list[dict]:
     """
-    업비트 계정의 입출금 내역을 조회합니다.
-    
+    특정 통화의 입금 또는 출금 내역을 조회합니다. (인증 필요)
+
+    Upbit의 입금 목록 조회(/v1/deposits) 또는 출금 목록 조회(/v1/withdraws) API에 GET 요청을 보내, 
+    과거 입출금 기록을 가져옵니다. API 키 설정이 필수적입니다.
+
     Args:
-        currency (str, optional): 통화 코드 (예: BTC)
-        txid (str, optional): 거래 ID
-        transaction_type (str): 거래 유형 - deposit(입금) 또는 withdraw(출금)
-        page (int): 페이지 번호
-        limit (int): 페이지당 결과 개수 (최대 100)
-        
+        currency (Optional[str]): 조회할 통화의 코드 (예: "KRW", "BTC"). 지정하지 않으면 전체 통화에 대해 조회합니다.
+        txid (Optional[str]): 조회할 입출금 내역의 고유 트랜잭션 ID.
+        transaction_type (Literal["deposit", "withdraw"]): 조회할 거래 유형. "deposit"은 입금, "withdraw"는 출금입니다.
+        page (int): 결과의 페이지 번호. 기본값은 1입니다.
+        limit (int): 한 페이지에 표시할 결과의 수. 기본값은 100입니다.
+        ctx (Context, optional): FastMCP 컨텍스트 객체. 함수 실행 중 정보나 오류를 로깅하는 데 사용됩니다.
+
     Returns:
-        list[dict]: 입출금 내역
+        list[dict]:
+            - 성공 시: 입금 또는 출금 내역의 정보를 담은 딕셔너리의 리스트. 주요 키는 다음과 같습니다:
+                - `type` (str): 거래 유형 ('deposit' 또는 'withdraw')
+                - `uuid` (str): 입출금의 고유 UUID
+                - `currency` (str): 통화 코드
+                - `amount` (str): 수량/금액
+                - `state` (str): 진행 상태 (e.g., 'DONE', 'ACCEPTED')
+                - `created_at` (str): 요청 시각
+                - `txid` (str): 트랜잭션 ID
+                - ... 등 Upbit 입출금 조회 API에서 제공하는 모든 필드.
+            - 실패 시: 오류 정보를 담은 딕셔너리를 포함한 리스트.
+                - `[{"error": "오류 메시지"}]` 형식입니다.
+
+    Example:
+        >>> # 가장 최근 비트코인(BTC) 입금 내역 조회
+        >>> btc_deposits = await get_deposits_withdrawals(currency="BTC", transaction_type="deposit")
+        >>> if btc_deposits and "error" not in btc_deposits[0]:
+        ...     print(f"최근 BTC 입금: {btc_deposits[0]['amount']} BTC, 상태: {btc_deposits[0]['state']}")
+        ... else:
+        ...     print(f"오류 또는 내역 없음: {btc_deposits}")
     """
-    print(f"DEBUG: get_deposits_withdrawals called. currency={currency}, txid={txid}, transaction_type={transaction_type}, page={page}, limit={limit}, ctx_type={type(ctx)}", flush=True)
     if not UPBIT_ACCESS_KEY:
         if ctx:
             ctx.error("API 키가 설정되지 않았습니다. .env 파일에 UPBIT_ACCESS_KEY와 UPBIT_SECRET_KEY를 설정해주세요.")

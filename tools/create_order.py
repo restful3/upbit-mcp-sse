@@ -11,19 +11,46 @@ async def create_order(
     price: Optional[Union[str, float, int]] = None,
     ctx: Optional[Context] = None
 ) -> dict:
-    print(f"DEBUG: create_order called. market={market}, side={side}, ord_type={ord_type}, volume={volume} (type: {type(volume)}), price={price} (type: {type(price)}), ctx_type={type(ctx)}", flush=True)
     """
-    업비트에 주문을 생성합니다.
-    
+    지정가, 시장가 매수/매도 주문을 생성합니다. (인증 필요)
+
+    Upbit의 주문 생성 API 엔드포인트(/v1/orders)에 POST 요청을 보내 새로운 주문을 생성합니다.
+    주문 유형(ord_type)에 따라 필수 파라미터가 달라지므로 주의해야 합니다. API 키 설정이 필수적입니다.
+
     Args:
-        market (str): 마켓 코드 (예: KRW-BTC)
-        side (str): 주문 종류 - bid(매수) 또는 ask(매도)
-        ord_type (str): 주문 타입 - limit(지정가), price(시장가 매수), market(시장가 매도)
-        volume (str, float, int, optional): 주문량 (지정가, 시장가 매도 필수)
-        price (str, float, int, optional): 주문 가격 (지정가 필수, 시장가 매수 필수)
-        
+        market (str): 마켓 코드 (예: "KRW-BTC")
+        side (Literal["bid", "ask"]): 주문 종류. "bid"는 매수, "ask"는 매도입니다.
+        ord_type (Literal["limit", "price", "market"]): 주문 방식.
+            - "limit": 지정가 주문. `volume`(주문량)과 `price`(주문가)가 모두 필요합니다.
+            - "price": 시장가 매수 주문. `price`(주문 총액)가 필요합니다.
+            - "market": 시장가 매도 주문. `volume`(주문량)이 필요합니다.
+        volume (Optional[Union[str, float, int]]): 주문량. (지정가, 시장가 매도 시 필수)
+        price (Optional[Union[str, float, int]]): 주문 가격 또는 주문 총액. (지정가, 시장가 매수 시 필수)
+        ctx (Context, optional): FastMCP 컨텍스트 객체. 함수 실행 중 정보나 오류를 로깅하는 데 사용됩니다.
+
     Returns:
-        dict: 주문 결과
+        dict:
+            - 성공 시: 생성된 주문의 상세 정보를 담은 딕셔너리. 주요 키는 다음과 같습니다:
+                - `uuid` (str): 생성된 주문의 고유 UUID
+                - `side` (str): 주문 종류 ('bid' 또는 'ask')
+                - `ord_type` (str): 주문 방식
+                - `price` (str): 주문 가격
+                - `volume` (str): 주문량
+                - `state` (str): 주문 상태 (e.g., 'wait' - 체결 대기)
+                - `market` (str): 마켓 코드
+                - ... 등 Upbit 주문 조회 API에서 제공하는 모든 필드.
+            - 실패 시: 오류의 원인을 설명하는 메시지를 포함한 딕셔너리.
+                - `{"error": "오류 메시지"}` 형식입니다.
+
+    Example:
+        >>> # KRW-BTC 지정가 매수 주문 (0.01개, 50,000,000원)
+        >>> order_result = await create_order(market="KRW-BTC", side="bid", ord_type="limit", volume="0.01", price="50000000")
+        >>>
+        >>> # KRW-BTC 시장가 매수 주문 (50,000원 어치)
+        >>> order_result_market_buy = await create_order(market="KRW-BTC", side="bid", ord_type="price", price="50000")
+        >>>
+        >>> # KRW-BTC 시장가 매도 주문 (0.01개)
+        >>> order_result_market_sell = await create_order(market="KRW-BTC", side="ask", ord_type="market", volume="0.01")
     """
     if not UPBIT_ACCESS_KEY:
         if ctx:
