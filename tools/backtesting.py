@@ -216,6 +216,16 @@ async def backtesting(
                 candles, initial_capital, lookback, exit_lookback, atr_period, atr_filter, commission_rate, ctx
             )
         
+        # 개별 전략 함수 결과 검증
+        if "error" in result:
+            return result  # 오류가 있으면 바로 반환
+        
+        # 필수 키 확인 및 기본값 설정
+        if "portfolio_summary" not in result:
+            result["portfolio_summary"] = {"absolute_profit": 0}
+        if "performance_metrics" not in result:
+            result["performance_metrics"] = {"total_return": 0, "annualized_return": 0, "sharpe_ratio": 0, "max_drawdown": 0, "win_rate": 0}
+        
         # 전략 정보 추가
         result["strategy_info"] = {
             "strategy": strategy_type,
@@ -231,14 +241,15 @@ async def backtesting(
         }
         
         # 사용자 안내 메시지 추가
+        absolute_profit = result.get('portfolio_summary', {}).get('absolute_profit', 0)
         if initial_capital == 1000000:
             result["user_guidance"] = {
                 "capital_notice": "💡 초기 자본금이 지정되지 않아 기본값 1,000,000원을 사용했습니다.",
                 "recalculation_guide": "다른 자본금으로 계산하려면 'initial_capital' 파라미터를 지정하세요.",
-                "quick_calculation": f"간단 계산법: (원하는 자본금 ÷ 1,000,000) × {result['portfolio_summary']['absolute_profit']:.0f}원",
+                "quick_calculation": f"간단 계산법: (원하는 자본금 ÷ 1,000,000) × {absolute_profit:.0f}원",
                 "examples": [
-                    f"500만원 기준: {result['portfolio_summary']['absolute_profit'] * 5:.0f}원 수익",
-                    f"1000만원 기준: {result['portfolio_summary']['absolute_profit'] * 10:.0f}원 수익"
+                    f"500만원 기준: {absolute_profit * 5:.0f}원 수익",
+                    f"1000만원 기준: {absolute_profit * 10:.0f}원 수익"
                 ]
             }
         else:
@@ -248,13 +259,14 @@ async def backtesting(
             }
         
         # 자본금 독립적 지표 강조
+        performance = result.get('performance_metrics', {})
         result["capital_independent_metrics"] = {
             "note": "아래 지표들은 초기 자본금과 무관하게 동일합니다",
-            "total_return_pct": result['performance_metrics']['total_return'] * 100,
-            "annualized_return_pct": result['performance_metrics']['annualized_return'] * 100,
-            "sharpe_ratio": result['performance_metrics']['sharpe_ratio'],
-            "max_drawdown_pct": result['performance_metrics']['max_drawdown'] * 100,
-            "win_rate_pct": result['performance_metrics']['win_rate'] * 100
+            "total_return_pct": performance.get('total_return', 0) * 100,
+            "annualized_return_pct": performance.get('annualized_return', 0) * 100,
+            "sharpe_ratio": performance.get('sharpe_ratio', 0),
+            "max_drawdown_pct": performance.get('max_drawdown', 0) * 100,
+            "win_rate_pct": performance.get('win_rate', 0) * 100
         }
         
         # 차트 생성 (옵션)
@@ -307,7 +319,8 @@ async def backtesting(
             }
 
         if ctx:
-            ctx.info(f"백테스팅 완료: {market} 총수익률 {result['performance_metrics']['total_return']:.2%}")
+            total_return = result.get('performance_metrics', {}).get('total_return', 0)
+            ctx.info(f"백테스팅 완료: {market} 총수익률 {total_return:.2%}")
         
         return result
         
@@ -914,8 +927,10 @@ async def backtest_rsi_oversold(
                 
                 # 과매수 진입 시 매도 (포지션이 있을 때)
                 elif current_rsi >= overbought_threshold and not prev_rsi_overbought and asset > 0:
-                    # 전량 매도
+                    # 전량 매도 (asset을 0으로 설정하기 전에 수량 저장)
+                    sell_quantity = asset
                     sell_amount = asset * price * (1 - commission_rate)
+                    commission_amount = asset * price * commission_rate
                     cash = sell_amount
                     asset = 0
                     
@@ -923,8 +938,8 @@ async def backtest_rsi_oversold(
                         "date": date,
                         "action": "SELL",
                         "price": price,
-                        "quantity": asset,
-                        "commission": asset * price * commission_rate,
+                        "quantity": sell_quantity,
+                        "commission": commission_amount,
                         "rsi": current_rsi
                     })
                     
@@ -952,12 +967,9 @@ async def backtest_rsi_oversold(
             initial_capital, cash, asset, prices[-1], trade_history
         )
         
-        # 거래 내역에 상세 정보 추가
-        enhanced_trade_history = enhance_trade_history(trade_history, candles)
-        
         return {
             "performance_metrics": performance_metrics,
-            "trade_history": enhanced_trade_history,
+            "trade_history": trade_history,
             "monthly_returns": monthly_returns,
             "drawdown_periods": drawdown_periods,
             "portfolio_summary": portfolio_summary
@@ -1075,8 +1087,10 @@ async def backtest_bollinger_bands(
                     
                     # 매도 신호: 상단 임계값 이상 (포지션이 있을 때)
                     elif position >= sell_threshold and asset > 0:
-                        # 전량 매도
+                        # 전량 매도 (asset을 0으로 설정하기 전에 수량 저장)
+                        sell_quantity = asset
                         sell_amount = asset * price * (1 - commission_rate)
+                        commission_amount = asset * price * commission_rate
                         cash = sell_amount
                         asset = 0
                         
@@ -1084,8 +1098,8 @@ async def backtest_bollinger_bands(
                             "date": date,
                             "action": "SELL",
                             "price": price,
-                            "quantity": asset,
-                            "commission": asset * price * commission_rate,
+                            "quantity": sell_quantity,
+                            "commission": commission_amount,
                             "bb_position": position,
                             "bb_upper": upper,
                             "bb_lower": lower
@@ -1096,6 +1110,12 @@ async def backtest_bollinger_bands(
         
         # 최종 정산
         final_value = cash + (asset * prices[-1])
+        final_price = prices[-1]
+        
+        # 포트폴리오 요약 계산
+        portfolio_summary = calculate_portfolio_summary(
+            initial_capital, cash, asset, final_price, trade_history
+        )
         
         # 성과 지표 계산
         performance_metrics = calculate_performance_metrics(
@@ -1107,6 +1127,7 @@ async def backtest_bollinger_bands(
         drawdown_periods = calculate_drawdown_periods(portfolio_values)
         
         return {
+            "portfolio_summary": portfolio_summary,
             "performance_metrics": performance_metrics,
             "trade_history": trade_history,
             "monthly_returns": monthly_returns,
@@ -1202,8 +1223,10 @@ async def backtest_macd_signal(
                 
                 # 데드크로스: MACD가 신호선을 하향 돌파 (포지션이 있을 때)
                 elif not current_macd_above and prev_macd_above_signal and asset > 0:
-                    # 전량 매도
+                    # 전량 매도 (asset을 0으로 설정하기 전에 수량 저장)
+                    sell_quantity = asset
                     sell_amount = asset * price * (1 - commission_rate)
+                    commission_amount = asset * price * commission_rate
                     cash = sell_amount
                     asset = 0
                     
@@ -1211,8 +1234,8 @@ async def backtest_macd_signal(
                         "date": date,
                         "action": "SELL",
                         "price": price,
-                        "quantity": asset,
-                        "commission": asset * price * commission_rate,
+                        "quantity": sell_quantity,
+                        "commission": commission_amount,
                         "macd": current_macd,
                         "signal": current_signal,
                         "histogram": histogram[i] if not np.isnan(histogram[i]) else 0
@@ -1226,6 +1249,12 @@ async def backtest_macd_signal(
         
         # 최종 정산
         final_value = cash + (asset * prices[-1])
+        final_price = prices[-1]
+        
+        # 포트폴리오 요약 계산
+        portfolio_summary = calculate_portfolio_summary(
+            initial_capital, cash, asset, final_price, trade_history
+        )
         
         # 성과 지표 계산
         performance_metrics = calculate_performance_metrics(
@@ -1237,6 +1266,7 @@ async def backtest_macd_signal(
         drawdown_periods = calculate_drawdown_periods(portfolio_values)
         
         return {
+            "portfolio_summary": portfolio_summary,
             "performance_metrics": performance_metrics,
             "trade_history": trade_history,
             "monthly_returns": monthly_returns,
