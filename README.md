@@ -30,10 +30,12 @@
 | `get_orders`                 | 사용자의 미체결 주문 목록을 조회합니다.                                     | `market` (선택)          |
 | `get_order`                  | 특정 주문의 상세 내역을 조회합니다.                                         | `uuid`                   |
 | `cancel_order`               | 특정 주문을 취소합니다.                                                     | `uuid`                   |
-| `get_market_summary`         | (현재 `get_ticker`와 유사) 시장 요약 정보를 조회합니다.                     | `symbol="KRW-BTC"`       |
+| `get_market_summary`         | KRW 전체 마켓의 현재 상황을 동적으로 요약하여 제공합니다.                   | `major_n`, `top_n`, `sort_by` |
 | `get_deposits_withdrawals`   | 사용자의 입출금 내역을 조회합니다.                                          | `currency` (선택)        |
+| `get_markets`                | 업비트에서 거래 가능한 전체 마켓 코드 목록을 조회합니다.                     | -                        |
+| `get_candles`                | 지정된 마켓의 캔들(시고저종) 데이터를 조회합니다.                           | `market`, `interval`, `count` |
+| `create_withdraw`            | 디지털 자산 또는 원화 출금을 요청합니다.                                    | `currency`, `amount`, `address` |
 | `technical_analysis`         | 지정된 마켓과 인터벌에 대한 다양한 기술적 지표 및 분석 신호를 제공합니다. (API 엔드포인트 수정 및 MACD 계산 로직 개선)     | `market`, `interval`     |
-| `dummy_tool`                 | 서버 동작 테스트 및 기본적인 요청/응답 확인을 위한 더미 툴입니다.           | `message`                |
 
 ### 제공 프롬프트 (Prompts)
 
@@ -81,8 +83,9 @@ MCP 클라이언트나 LLM 에이전트가 참조할 수 있는 정적 또는 �
     <li>특정 마켓의 실시간 매수/매도 호가 정보 조회 (<code>get_orderbook</code>)</li>
     <li>특정 마켓의 가장 최근 단일 체결 내역 조회 (<code>get_trades</code>)</li>
     <li>(<code>get_market_summary</code>는 현재 <code>get_ticker</code>와 유사 기능 제공 가능성)</li>
+    <li>지정된 마켓의 캔들(시고저종) 데이터 조회 (<code>get_candles</code>)</li>
     <li>지정된 마켓과 인터벌에 대한 다양한 기술적 지표 및 분석 신호 확인 (<code>technical_analysis</code>)</li>
-    <li>업비트 거래 가능 전체 마켓 코드 목록 확인 (<code>market://list</code> 리소스, <code>get_market_list</code>)</li>
+    <li>업비트 거래 가능 전체 마켓 코드 목록 확인 (<code>get_markets</code>, <code>market://list</code> 리소스)</li>
   </ul>
 
   <h4>계정 정보 조회</h4>
@@ -97,6 +100,7 @@ MCP 클라이언트나 LLM 에이전트가 참조할 수 있는 정적 또는 �
   <ul>
     <li>지정가 또는 시장가 매수/매도 주문 생성 (<code>create_order</code>)</li>
     <li>특정 주문 취소 (<code>cancel_order</code>)</li>
+    <li>디지털 자산 또는 원화 출금 요청 (<code>create_withdraw</code>)</li>
   </ul>
 
   <h4>LLM 에이전트 보조</h4>
@@ -153,6 +157,15 @@ MCP 클라이언트나 LLM 에이전트가 참조할 수 있는 정적 또는 �
 
 2.  **의존성 패키지 설치 (uv 권장):**
     `uv`를 사용하여 Python 프로젝트에 필요한 패키지들을 설치하는 것을 강력히 권장합니다. `uv`는 기존 `pip` 및 `venv`보다 빠르고 효율적인 패키지 관리를 제공합니다.
+    
+    **주요 의존성 패키지:**
+    - `fastmcp>=0.1.8` (하지만 requirements.txt에서는 1.0.0 사용)
+    - `httpx>=0.27.0` (HTTP 클라이언트)
+    - `pyjwt` (JWT 토큰 생성)
+    - `python-dotenv` (환경변수 관리)
+    - `numpy` (기술적 분석)
+    - `pyupbit` (업비트 API 지원)
+    - `uvicorn` (ASGI 서버)
 
     만약 `uv`가 설치되어 있지 않다면, 다음 방법으로 먼저 설치해주세요:
     ```bash
@@ -228,6 +241,8 @@ MCP 클라이언트나 LLM 에이전트가 참조할 수 있는 정적 또는 �
     *   `/sse`: `FastMCP` 라이브러리에서 SSE 스트림을 위해 사용하는 일반적인 경로입니다. 만약 루트 경로(`/`)로 요청 시 `404 Not Found` 오류가 발생하면, `/sse` 경로를 사용해보세요.
     *   만약 n8n이 Docker 외부(예: 로컬 머신)에서 실행되고 MCP 서버만 Docker로 실행 중이라면, URL은 `http://localhost:8001/sse` (또는 Docker 호스트의 IP와 노출된 포트)가 됩니다.
 
+**⚠️ 주의사항**: 현재 FastMCP import 오류로 인해 서버가 정상 실행되지 않을 수 있습니다. 이 문제는 우선적으로 해결되어야 합니다.
+
 ### 개발 서버 실행 (Docker 미사용, 직접 테스트용)
 
 개발 또는 직접 테스트 목적으로 Docker 없이 서버를 실행할 수 있습니다:
@@ -267,8 +282,23 @@ uv run python main.py
 -   **비동기 처리**: API 호출과 관련된 툴 함수들(`get_ticker`, `technical_analysis` 등)은 `async def`로 정의되어 있으며, 내부적으로 `httpx.AsyncClient`를 사용하여 비동기 HTTP 요청을 처리합니다.
 -   **EMA 계산**: `technical_analysis`에서 MACD 등의 지표 계산 시, 초기에는 단순 평균(SMA)으로 EMA를 근사했지만, 현재는 보다 표준적인 EMA 계산 방식을 적용하여 정확도를 높였습니다.
 
-## 향후 개선 방향 (TODO)
+## 현재 이슈 및 해결 필요 사항
 
+### 🚨 긴급 수정 필요
+1. **FastMCP Import 오류**: `main.py`에서 `from mcp.server.fastmcp import FastMCP, Context` 라인이 모듈을 찾을 수 없는 오류 발생
+2. **의존성 버전 불일치**: 
+   - `requirements.txt`: `fastmcp==1.0.0`
+   - `pyproject.toml`: `fastmcp>=0.1.8`
+
+### 📋 향후 개선 방향 (TODO)
+
+#### 차트 이미지 생성 기능 (우선순위 높음)
+- `tools/generate_chart_image.py` 개발
+- Matplotlib을 이용한 차트 생성
+- Docker 볼륨을 통한 이미지 파일 공유
+- Nginx 웹 서버 추가로 이미지 URL 제공
+
+#### 기능 확장
 -   더 많은 기술적 지표 추가 (예: Stochastic Oscillator, Ichimoku Cloud 등)
 -   실시간 웹소켓 데이터 스트리밍 지원 (별도 툴 또는 기능으로)
 -   사용자별 설정 저장 기능 (예: 선호하는 기술적 지표, 알림 설정 등)
