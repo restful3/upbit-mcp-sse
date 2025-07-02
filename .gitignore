@@ -67,3 +67,5 @@ logs/
 
 # uv 관련
 .uv/
+
+charts/

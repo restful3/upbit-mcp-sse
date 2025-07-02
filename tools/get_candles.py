@@ -54,9 +54,19 @@ async def get_candles(
     
     # interval에 따라 API 엔드포인트 선택
     if interval.startswith("minute"):
-        url = f"{API_BASE}/candles/{interval}"
+        # minute60 -> 60 추출
+        unit = interval.replace("minute", "")
+        url = f"{API_BASE}/candles/minutes/{unit}"
+    elif interval == "day":
+        url = f"{API_BASE}/candles/days"
+    elif interval == "week":
+        url = f"{API_BASE}/candles/weeks"
+    elif interval == "month":
+        url = f"{API_BASE}/candles/months"
     else:
-        url = f"{API_BASE}/candles/{interval}s"
+        if ctx:
+            ctx.error(f"지원하지 않는 interval: {interval}")
+        return [{"error": f"지원하지 않는 interval: {interval}"}]
     
     params = {
         'market': market,

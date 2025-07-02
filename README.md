@@ -11,6 +11,8 @@
 - 계정 정보 확인 (전체 잔고, 미체결 주문, 개별 주문 상세, 입출금 내역 등)
 - 주문 실행 및 취소 (지정가/시장가 주문, 주문 취소)
 - 기술적 분석 지표 및 신호 제공 (EMA 기반 MACD 계산, API 엔드포인트 수정 등 정확도 향상)
+- **백테스팅 시스템** (SMA, RSI, 볼린저 밴드, MACD 전략 지원, 자연어 요청 처리 가능)
+- **차트 이미지 생성 기능** (캔들스틱, 라인, OHLC 차트 지원, 날짜 범위 지정 가능, 웹 접근 가능한 이미지 URL 제공)
 - LLM 에이전트의 답변 및 행동을 가이드하기 위한 프롬프트 및 리소스 제공
 - `FastMCP 1.0.0` 기반의 SSE(Server-Sent Events) 통신 지원으로 n8n 등 외부 시스템과의 유연한 연동
 - 주요 기능에 대한 상세 로깅 추가로 디버깅 편의성 증대
@@ -36,6 +38,8 @@
 | `get_candles`                | 지정된 마켓의 캔들(시고저종) 데이터를 조회합니다.                           | `market`, `interval`, `count` |
 | `create_withdraw`            | 디지털 자산 또는 원화 출금을 요청합니다.                                    | `currency`, `amount`, `address` |
 | `technical_analysis`         | 지정된 마켓과 인터벌에 대한 다양한 기술적 지표 및 분석 신호를 제공합니다. (API 엔드포인트 수정 및 MACD 계산 로직 개선)     | `market`, `interval`     |
+| `backtesting`                | 지정된 전략으로 과거 데이터를 이용한 백테스팅을 수행하고 성과 지표를 제공합니다. (SMA, RSI, 볼린저 밴드, MACD 전략 지원) | `market`, `strategy_type`, `start_date`, `end_date`, `strategy_params` |
+| `generate_chart_image`       | 지정된 마켓의 차트 이미지를 생성하고 웹 접근 가능한 URL을 제공합니다. (캔들스틱, 라인, OHLC 차트, 날짜 범위 지정 가능) | `market`, `interval`, `chart_type`, `start_date`, `end_date` |
 
 ### 제공 프롬프트 (Prompts)
 
@@ -47,6 +51,7 @@ LLM 에이전트가 특정 상황에 더 적절하게 응답하거나 작업을 
 | `analyze_portfolio`    | `get_accounts`로 얻은 계좌 정보를 바탕으로 포트폴리오 분석을 요청하는 텍스트를 생성합니다. |
 | `order_help`           | `create_order` 툴 사용법 및 주문 관련 도움말을 제공합니다.                 |
 | `trading_strategy`     | 트레이딩 전략 수립 과정을 안내하고 관련 툴 사용을 유도하는 텍스트를 생성합니다. |
+| `backtesting_guide`    | 자연어 백테스팅 요청을 툴 파라미터로 변환하는 가이드를 제공합니다. |
 
 ### 제공 리소스 (Resources)
 
@@ -73,6 +78,301 @@ MCP 클라이언트나 LLM 에이전트가 참조할 수 있는 정적 또는 �
 
 **참고:** `technical_analysis` 함수는 `market` (예: "KRW-BTC") 및 `interval` (예: "day", "minute60")을 인자로 받습니다. 제공되는 신호는 투자 결정에 대한 참고 자료이며, 실제 투자는 사용자의 신중한 판단 하에 이루어져야 합니다. 데이터 부족 시 지표 값은 "N/A"로 표시될 수 있습니다.
 
+## 백테스팅 도구 상세
+
+`tools/backtesting.py`에서 제공하는 `backtesting` 함수는 다양한 거래 전략을 과거 데이터에 적용하여 성과를 시뮬레이션하고 분석합니다. 2025년 1월 기준으로 완전히 구현되어 모든 주요 기능이 정상 작동합니다.
+
+### 지원하는 백테스팅 전략
+
+| 전략 타입 | 전략명 | 설명 | 주요 파라미터 |
+|---|---|---|---|
+| `sma_crossover` | SMA 교차 전략 | 단기/장기 이동평균선의 골든크로스/데드크로스 기반 매매 | `fast_period`, `slow_period` |
+| `rsi_oversold` | RSI 과매도/과매수 전략 | RSI 지표의 과매도/과매수 구간 진입 시 매매 | `rsi_period`, `oversold_threshold`, `overbought_threshold` |
+| `bollinger_bands` | 볼린저 밴드 전략 | 볼린저 밴드 내 상대적 위치 기반 매매 | `period`, `std_dev`, `buy_threshold`, `sell_threshold` |
+| `macd_signal` | MACD 신호선 전략 | MACD선과 신호선의 교차 기반 매매 | `fast_period`, `slow_period`, `signal_period` |
+
+### 지원하는 시간 간격
+
+- **분봉**: 1분(`minute1`), 3분(`minute3`), 5분(`minute5`), 10분(`minute10`), 15분(`minute15`), 30분(`minute30`)
+- **시간봉**: 1시간(`minute60`), 4시간(`minute240`)
+- **일봉**: `day`
+- **주봉**: `week`
+- **월봉**: `month`
+
+### 제공하는 성과 지표
+
+백테스팅 결과로 다음과 같은 상세한 성과 지표를 제공합니다:
+
+| 지표 분류 | 세부 지표 | 설명 |
+|---|---|---|
+| **포트폴리오 요약** | `initial_capital` | 초기 자본금 |
+|  | `final_cash_balance` | 최종 현금 잔고 |
+|  | `final_asset_quantity` | 최종 자산 보유량 |
+|  | `final_asset_price` | 최종 자산 가격 |
+|  | `final_asset_value` | 최종 자산 평가가치 |
+|  | `final_total_value` | 최종 총 포트폴리오 가치 |
+|  | `absolute_profit` | 절대 수익 금액 |
+|  | `position_status` | 포지션 상태 (CASH/HOLDING_ASSET/MIXED) |
+| **수익률 지표** | `total_return` | 백테스트 기간 총 수익률 |
+|  | `annualized_return` | 연환산 수익률 |
+|  | `realized_return` | 실현 수익률 |
+|  | `unrealized_return` | 미실현 수익률 |
+| **손익 분석** | `realized_profit` | 실현 손익 (완료된 거래의 손익) |
+|  | `unrealized_profit` | 미실현 손익 (보유 포지션의 손익) |
+| **위험 지표** | `volatility` | 연율화 변동성 |
+|  | `sharpe_ratio` | 샤프 지수 (위험 대비 수익률) |
+|  | `max_drawdown` | 최대 낙폭 |
+| **거래 성과** | `win_rate` | 승률 (수익 거래 비율) |
+|  | `profit_factor` | 프로핏 팩터 (총 이익/총 손실) |
+|  | `total_trades` | 총 거래 횟수 |
+| **상세 분석** | `monthly_returns` | 월별 수익률 상세 |
+|  | `drawdown_periods` | 주요 드로우다운 구간 분석 |
+|  | `trade_history` | 모든 거래 내역 상세 (개별 거래 손익 포함) |
+
+### 자연어 백테스팅 사용 예시
+
+`backtesting_guide` 프롬프트를 통해 자연어로 백테스팅을 요청할 수 있습니다:
+
+#### 📝 사용자 요청 예시
+```
+"비트코인 20일선과 50일선 골든크로스 전략으로 2024년 전체 기간 일봉 백테스팅해줘"
+"이더리움 RSI 14일 과매도 25, 과매수 75 전략, 2024년 하반기 4시간봉으로 분석해줘"
+"리플 볼린저밴드 20일 2시그마 전략으로 2024년 상반기 백테스팅 결과 보여줘"
+"도지코인 MACD 12-26-9 신호선 교차 전략으로 2024년 6월~12월 백테스팅 분석해줘"
+```
+
+#### 🤖 LLM 에이전트 응답 예시 (프롬프트 활용)
+
+**사용자**: "비트코인 20일선과 50일선 골든크로스 전략으로 2024년 전체 기간 일봉 백테스팅해줘"
+
+**LLM**: 비트코인 SMA 교차 전략 백테스팅을 진행하겠습니다. 다음 파라미터로 분석하겠습니다:
+- 마켓: KRW-BTC
+- 전략: SMA 교차 (20일선과 50일선)
+- 기간: 2024년 1월 1일 ~ 2024년 12월 31일
+- 시간간격: 일봉(day)
+
+```json
+{
+  "market": "KRW-BTC",
+  "strategy_type": "sma_crossover",
+  "start_date": "2024-01-01",
+  "end_date": "2024-12-31",
+  "interval": "day",
+  "strategy_params": {
+    "fast_period": 20,
+    "slow_period": 50
+  }
+}
+```
+
+**사용자**: "리플 볼린저밴드 전략으로 최근 3개월 4시간봉 백테스팅해줘"
+
+**LLM**: 리플(XRP) 볼린저 밴드 전략 백테스팅을 실행하겠습니다:
+- 마켓: KRW-XRP
+- 전략: 볼린저 밴드 (기본 20일, 2시그마)
+- 기간: 최근 3개월
+- 시간간격: 4시간봉
+
+```json
+{
+  "market": "KRW-XRP",
+  "strategy_type": "bollinger_bands",
+  "start_date": "2024-10-01",
+  "end_date": "2024-12-31",
+  "interval": "minute240",
+  "strategy_params": {
+    "period": 20,
+    "std_dev": 2.0,
+    "buy_threshold": 0.2,
+    "sell_threshold": 0.8
+  }
+}
+```
+
+#### 💡 프롬프트 변환 가이드
+
+`backtesting_guide` 프롬프트는 다음과 같은 자연어 표현을 툴 파라미터로 변환합니다:
+
+| 자연어 표현 | 툴 파라미터 변환 |
+|---|---|
+| "20일선과 50일선 골든크로스" | `strategy_type: "sma_crossover"`, `fast_period: 20`, `slow_period: 50` |
+| "RSI 과매도 25, 과매수 75" | `strategy_type: "rsi_oversold"`, `oversold_threshold: 25`, `overbought_threshold: 75` |
+| "볼린저밴드 20일 2시그마" | `strategy_type: "bollinger_bands"`, `period: 20`, `std_dev: 2.0` |
+| "MACD 12-26-9" | `strategy_type: "macd_signal"`, `fast_period: 12`, `slow_period: 26`, `signal_period: 9` |
+| "2024년 상반기" | `start_date: "2024-01-01"`, `end_date: "2024-06-30"` |
+| "최근 3개월" | 현재 날짜 기준 3개월 전부터 |
+| "4시간봉" | `interval: "minute240"` |
+| "일봉" | `interval: "day"` |
+
+### 백테스팅 시스템 특징
+
+- **정확한 API 연동**: Upbit API의 모든 시간 간격에 대해 올바른 엔드포인트 사용
+- **페이징 처리**: 200개 제한을 넘는 긴 기간 데이터도 자동으로 수집
+- **안정적인 계산**: 무한 루프 및 API 오류 문제 해결 완료
+- **상세한 분석**: 단순 수익률뿐만 아니라 리스크 조정 지표까지 제공
+- **유연한 파라미터**: 각 전략별로 세부 파라미터 조정 가능
+- **🆕 완전한 포트폴리오 추적**: 최종 잔고, 포지션 상태, 실현/미실현 손익 명확 표시
+- **🆕 개별 거래 분석**: 각 거래의 손익률과 포트폴리오 영향 상세 제공
+
+### 개선된 백테스팅 결과 예시
+
+```json
+{
+  "portfolio_summary": {
+    "initial_capital": 1000000,
+    "final_cash_balance": 0,
+    "final_asset_quantity": 0.00899,
+    "final_asset_price": 139300000,
+    "final_asset_value": 1252507,
+    "final_total_value": 1252507,
+    "absolute_profit": 252507,
+    "position_status": "HOLDING_ASSET",
+    "realized_profit": -218101,
+    "unrealized_profit": 470608,
+    "realized_return": -0.218,
+    "unrealized_return": 0.471
+  },
+  "performance_metrics": {
+    "total_return": 0.2525,
+    "annualized_return": 0.2971,
+    "volatility": 0.2554,
+    "sharpe_ratio": 1.16,
+    "max_drawdown": -0.2928,
+    "win_rate": 0.0,
+    "profit_factor": 0,
+    "total_trades": 5
+  },
+  "trade_history": [
+    {
+      "date": "2024-05-30",
+      "action": "BUY",
+      "price": 94593000,
+      "quantity": 0.01053,
+      "commission": 500,
+      "portfolio_value": 995500,
+      "trade_profit": 0,
+      "trade_return": 0
+    },
+    {
+      "date": "2024-06-26", 
+      "action": "SELL",
+      "price": 86027000,
+      "quantity": 0.01053,
+      "commission": 453,
+      "portfolio_value": 905185,
+      "trade_profit": -90315,
+      "trade_return": -0.096
+    }
+  ]
+}
+```
+
+이제 **"초기 자본 1,000,000원으로 시작해서 최종적으로 1,252,507원이 되었다"**는 것을 명확히 알 수 있습니다!
+
+**⚠️ 면책 조항**: 백테스팅 결과는 과거 데이터를 기반으로 한 시뮬레이션이며, 미래 수익을 보장하지 않습니다. 실제 투자 결정은 신중한 판단 하에 이루어져야 합니다.
+
+## 차트 이미지 생성 도구 상세
+
+`tools/generate_chart_image.py`에서 제공하는 `generate_chart_image` 함수는 지정된 마켓의 시각적 차트를 생성하고 웹에서 접근 가능한 이미지 URL을 제공합니다. 2025년 1월 기준으로 완전히 구현되어 모든 주요 기능이 정상 작동합니다.
+
+### 지원하는 차트 기능
+
+| 기능 분류 | 세부 옵션 | 설명 | 기본값 |
+|---|---|---|---|
+| **차트 타입** | `candlestick` | 캔들스틱 차트 (시가, 고가, 저가, 종가 표시) | ✅ 기본값 |
+|  | `line` | 라인 차트 (종가만 표시) |  |
+|  | `ohlc` | OHLC 바 차트 (시고저종 표시) |  |
+| **시간 간격** | `minute1` ~ `minute240` | 1분봉부터 4시간봉까지 | `day` |
+|  | `day`, `week`, `month` | 일봉, 주봉, 월봉 |  |
+| **데이터 개수** | `count` | 표시할 캔들 개수 (10~200개) | 100개 |
+| **날짜 범위** | `start_date` | 시작 날짜 (YYYY-MM-DD 형식) | 없음 (최신 데이터) |
+|  | `end_date` | 종료 날짜 (YYYY-MM-DD 형식) | 없음 (최신 데이터) |
+| **추가 지표** | `include_volume` | 거래량 차트 포함 여부 | ✅ 포함 |
+|  | `include_ma` | 이동평균선(MA20, MA50) 포함 여부 | ✅ 포함 |
+
+### 차트 생성 플로우
+
+1. **데이터 수집**: Upbit API에서 지정된 마켓과 시간 간격의 캔들 데이터 조회
+2. **날짜 필터링**: `start_date`와 `end_date`가 지정된 경우 해당 범위의 데이터만 추출
+3. **차트 생성**: Matplotlib을 사용하여 시각적 차트 이미지 생성
+   - 캔들스틱/라인/OHLC 차트
+   - 거래량 서브차트 (선택 시)
+   - 이동평균선 오버레이 (선택 시)
+4. **파일 저장**: `/app/uploads/charts/` 디렉토리에 PNG 파일로 저장
+5. **URL 반환**: `https://charts.resteful3.shop/파일명.png` 형태의 웹 접근 가능한 URL 제공
+
+### 차트 이미지 접근
+
+생성된 차트는 별도 서브도메인을 통해 웹에서 바로 접근할 수 있습니다:
+
+- **도메인**: `charts.resteful3.shop`
+- **SSL 인증서**: Let's Encrypt 자동 갱신
+- **CORS 설정**: 모든 도메인에서 접근 가능
+- **캐시 설정**: 1시간 캐시로 성능 최적화
+
+### 사용 예시
+
+#### 📝 기본 차트 생성
+```json
+{
+  "market": "KRW-BTC",
+  "interval": "day",
+  "chart_type": "candlestick",
+  "count": 100
+}
+```
+
+#### 📅 날짜 범위 지정 차트
+```json
+{
+  "market": "KRW-BTC", 
+  "interval": "day",
+  "chart_type": "candlestick",
+  "start_date": "2024-06-01",
+  "end_date": "2024-12-31",
+  "count": 200
+}
+```
+
+#### 💬 자연어 요청 예시
+- "비트코인 일봉 캔들스틱 차트를 생성해주세요"
+- "2024년 6월부터 12월까지 이더리움 차트를 보여주세요"
+- "리플 4시간봉 라인 차트를 거래량과 함께 만들어주세요"
+- "도지코인 15분봉 차트를 이동평균선 없이 생성해주세요"
+
+### 기술적 세부사항
+
+- **이미지 형식**: PNG (고해상도 150 DPI)
+- **차트 크기**: 12x8 또는 12x10 (거래량 포함 시)
+- **한글 폰트**: 시스템 기본 폰트 사용
+- **색상 구성**: 
+  - 상승 캔들: 빨간색
+  - 하락 캔들: 파란색
+  - MA20: 주황색
+  - MA50: 빨간색
+- **파일명 형식**: `{마켓}_{간격}_{타입}_{타임스탬프}.png`
+
+### Docker 환경 설정
+
+차트 생성을 위한 Docker 환경이 구성되어 있습니다:
+
+```dockerfile
+# 의존성 패키지
+matplotlib>=3.7.0
+pillow>=10.0.0
+
+# 볼륨 마운트
+/app/uploads/charts -> Nginx 정적 파일 서빙
+```
+
+### 차트 기능의 장점
+
+1. **즉시 시각화**: 복잡한 데이터를 한눈에 파악 가능한 차트로 변환
+2. **웹 접근성**: 생성된 이미지를 바로 웹에서 확인 가능
+3. **유연한 설정**: 다양한 차트 타입과 시간 간격 지원
+4. **날짜 범위**: 특정 기간의 과거 데이터 차트 생성 가능
+5. **기술적 분석**: 이동평균선과 거래량으로 추가 인사이트 제공
+
 <details>
   <summary><strong>수행 가능한 기능 목록 (세부)</strong></summary>
   <br/>
@@ -85,6 +385,7 @@ MCP 클라이언트나 LLM 에이전트가 참조할 수 있는 정적 또는 �
     <li>(<code>get_market_summary</code>는 현재 <code>get_ticker</code>와 유사 기능 제공 가능성)</li>
     <li>지정된 마켓의 캔들(시고저종) 데이터 조회 (<code>get_candles</code>)</li>
     <li>지정된 마켓과 인터벌에 대한 다양한 기술적 지표 및 분석 신호 확인 (<code>technical_analysis</code>)</li>
+    <li>시각적 차트 이미지 생성 및 웹 URL 제공 (<code>generate_chart_image</code>)</li>
     <li>업비트 거래 가능 전체 마켓 코드 목록 확인 (<code>get_markets</code>, <code>market://list</code> 리소스)</li>
   </ul>
 
@@ -109,6 +410,23 @@ MCP 클라이언트나 LLM 에이전트가 참조할 수 있는 정적 또는 �
     <li>포트폴리오 분석 요청 생성 (<code>analyze_portfolio</code> 프롬프트)</li>
     <li>주문 방법 안내 (<code>order_help</code> 프롬프트)</li>
     <li>트레이딩 전략 수립 가이드 (<code>trading_strategy</code> 프롬프트)</li>
+  </ul>
+
+  <h4>백테스팅 및 전략 분석</h4>
+  <ul>
+    <li>다양한 거래 전략의 과거 성과 시뮬레이션 (<code>backtesting</code>)</li>
+    <li>SMA 교차, RSI 과매도/과매수, 볼린저 밴드, MACD 신호선 전략 지원</li>
+    <li>상세한 성과 지표 및 위험 분석 (수익률, 샤프 지수, 최대 낙폭 등)</li>
+    <li>자연어 백테스팅 요청 처리 (<code>backtesting_guide</code> 프롬프트)</li>
+  </ul>
+
+  <h4>차트 이미지 생성</h4>
+  <ul>
+    <li>캔들스틱, 라인, OHLC 차트 생성 (<code>generate_chart_image</code>)</li>
+    <li>날짜 범위 지정 가능 (과거 특정 기간 차트 생성)</li>
+    <li>거래량 및 이동평균선 포함/제외 선택</li>
+    <li>웹 접근 가능한 이미지 URL 자동 생성</li>
+    <li>다양한 시간 간격 지원 (1분봉~월봉)</li>
   </ul>
 </details>
 
@@ -166,6 +484,8 @@ MCP 클라이언트나 LLM 에이전트가 참조할 수 있는 정적 또는 �
     - `numpy` (기술적 분석)
     - `pyupbit` (업비트 API 지원)
     - `uvicorn` (ASGI 서버)
+    - `matplotlib>=3.7.0` (차트 생성)
+    - `pillow>=10.0.0` (이미지 처리)
 
     만약 `uv`가 설치되어 있지 않다면, 다음 방법으로 먼저 설치해주세요:
     ```bash
@@ -284,6 +604,20 @@ uv run python main.py
 
 ## 현재 이슈 및 해결 필요 사항
 
+### ✅ 최근 완료된 주요 기능
+
+1. **차트 이미지 생성 시스템 구축 완료** (2025년 1월)
+   - `tools/generate_chart_image.py` 구현
+   - Matplotlib 기반 캔들스틱/라인/OHLC 차트 생성
+   - 날짜 범위 지정 기능 (과거 특정 기간 차트 생성 가능)
+   - Nginx + SSL 기반 웹 서빙 (`charts.resteful3.shop`)
+   - Docker 환경 완전 구성
+
+2. **백테스팅 시스템 안정화 완료** (2024년)
+   - 모든 주요 전략 (SMA, RSI, 볼린저 밴드, MACD) 정상 작동
+   - 정확한 포트폴리오 추적 및 손익 계산
+   - 자연어 요청 처리 프롬프트 완성
+
 ### 🚨 긴급 수정 필요
 1. **FastMCP Import 오류**: `main.py`에서 `from mcp.server.fastmcp import FastMCP, Context` 라인이 모듈을 찾을 수 없는 오류 발생
 2. **의존성 버전 불일치**: 
@@ -292,12 +626,6 @@ uv run python main.py
 
 ### 📋 향후 개선 방향 (TODO)
 
-#### 차트 이미지 생성 기능 (우선순위 높음)
-- `tools/generate_chart_image.py` 개발
-- Matplotlib을 이용한 차트 생성
-- Docker 볼륨을 통한 이미지 파일 공유
-- Nginx 웹 서버 추가로 이미지 URL 제공
-
 #### 기능 확장
 -   더 많은 기술적 지표 추가 (예: Stochastic Oscillator, Ichimoku Cloud 등)
 -   실시간 웹소켓 데이터 스트리밍 지원 (별도 툴 또는 기능으로)
@@ -305,6 +633,13 @@ uv run python main.py
 -   툴 파라미터 유효성 검증 강화
 -   더 다양한 프롬프트 및 리소스 추가
 -   테스트 코드 커버리지 확대
+
+#### 차트 기능 개선
+-   더 많은 차트 타입 추가 (헤이킨 아시, 렌코 차트 등)
+-   추가 기술적 지표 오버레이 (RSI, MACD, 볼린저 밴드 등)
+-   인터랙티브 차트 지원 (Plotly 등)
+-   차트 스타일 커스터마이징 옵션
+-   다중 마켓 비교 차트
 
 ## 주의 사항
 

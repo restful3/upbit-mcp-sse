@@ -9,6 +9,9 @@ import asyncio
 print("DEBUG: Imports in main.py finished", flush=True) # 로그 추가
 
 from tools.technical_analysis import technical_analysis # technical_analysis 주석 해제
+from tools.backtesting import backtesting # 백테스팅 툴 추가
+from tools.generate_chart_image import generate_chart_image # 차트 생성 툴 추가
+from tools.generate_backtest_chart import generate_backtest_chart # 백테스팅 차트 생성 툴 추가
 # --- 모든 외부 툴, 프롬프트, 리소스 import 제거 ---
 from tools.get_ticker import get_ticker
 from tools.get_orderbook import get_orderbook
@@ -30,6 +33,7 @@ from prompts.explain_ticker import explain_ticker
 from prompts.analyze_portfolio import analyze_portfolio
 from prompts.order_help import order_help
 from prompts.trading_strategy import trading_strategy
+from prompts.backtesting_guide import backtesting_guide, format_backtesting_result
 
 from resources.get_market_list import get_market_list
 
@@ -52,6 +56,9 @@ except AttributeError:
 tool_decorator_instance = mcp.tool()
 
 mcp.tool()(technical_analysis) # technical_analysis 툴 등록 주석 해제
+mcp.tool()(backtesting) # 백테스팅 툴 등록 (차트 생성 기능 포함)
+mcp.tool()(generate_chart_image) # 차트 생성 툴 등록
+mcp.tool()(generate_backtest_chart) # 백테스팅 차트 생성 툴 등록 (독립 사용 가능)
 mcp.tool()(get_ticker)
 mcp.tool()(get_orderbook)
 mcp.tool()(get_trades)
@@ -75,6 +82,8 @@ mcp.prompt()(explain_ticker)
 mcp.prompt()(analyze_portfolio)
 mcp.prompt()(order_help)
 mcp.prompt()(trading_strategy)
+mcp.prompt()(backtesting_guide)
+mcp.prompt()(format_backtesting_result)
 
 if __name__ == "__main__":
     print("DEBUG: Entering __main__ block", flush=True)

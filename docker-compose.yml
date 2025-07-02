@@ -2,32 +2,24 @@ version: '3.8'
 
 services:
   upbit-mcp-server:
-    image: python:3.10-slim # 파이썬 공식 슬림 이미지를 기반으로 합니다.
-    container_name: upbit_mcp_server
-    restart: unless-stopped
-    working_dir: /app      # 컨테이너 내 작업 디렉토리를 /app으로 설정합니다.
-    env_file:
-      - .env              # 호스트의 .env 파일에서 환경 변수를 로드합니다.
+    build: .
+    container_name: upbit-mcp-server
     ports:
-      - "8001:8001"       # 호스트의 8001 포트를 컨테이너의 8001 포트에 매핑합니다.
+      - "8001:8001"  # SSE 포트 매핑
+    environment:
+      - UPBIT_ACCESS_KEY=${UPBIT_ACCESS_KEY}
+      - UPBIT_SECRET_KEY=${UPBIT_SECRET_KEY}
     volumes:
-      - .:/app            # 현재 디렉토리(Upbit MCP 서버 프로젝트 전체)를 컨테이너의 /app 디렉토리에 마운트합니다.
+      - ./charts:/app/charts  # 차트 이미지 저장용 볼륨 마운트
+      # 기존 Nginx와 공유할 차트 디렉토리 (기존 uploads 디렉토리 사용)
+      - ../https-nginx-docker/uploads:/app/uploads  
+    restart: unless-stopped
     networks:
-      - nginx-n8n-net     # 기존 n8n과 동일한 네트워크에 연결합니다.
-    command: >
-      sh -c "
-        echo 'Updating package lists and installing curl...' &&
-        apt-get update && apt-get install -y curl && \
-        apt-get clean && rm -rf /var/lib/apt/lists/* && \
-        echo 'Installing uv...' &&
-        curl -Ls https://astral.sh/uv/install.sh | sh && \
-        export PATH="/root/.local/bin:$PATH" && \
-        echo 'Syncing dependencies with uv...' &&
-        /root/.local/bin/uv sync && \
-        echo 'Starting Upbit MCP server using uv...' &&
-        /root/.local/bin/uv run python main.py
-      "
+      - nginx-n8n-net  # 기존 네트워크 사용
 
 networks:
   nginx-n8n-net:
-    external: true # 이 네트워크는 이미 외부에서 생성되어 있다고 가정합니다 (n8n docker-compose 등).
+    external: true  # 기존 네트워크 사용
+
+# 로컬 디렉토리 생성을 위한 참고
+# mkdir -p ./charts
